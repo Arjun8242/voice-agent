@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Documentation
+docs/
+
+# Logs & output files
+*.log
+*.wav
+*.mp3
+sarvam_test_output.wav
+
+# OS files
+.DS_Store
+Thumbs.db
