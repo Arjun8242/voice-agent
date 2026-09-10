@@ -1,0 +1,305 @@
+{
+  "id": "voiceRagPipeline01",
+  "name": "Voice RAG Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "voice-rag-query",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "1. Webhook Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "voice-rag-query",
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-goog-api-key",
+              "value": "={{$env.GEMINI_API_KEY}}"
+            },
+            {
+              "name": "x-goog-api-client",
+              "value": "genai-js/0.24.1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: { role: 'user', parts: [{ text: $('1. Webhook Input').item.json.body.query || 'Hello' }] } }) }}",
+        "options": {}
+      },
+      "id": "node-gemini-embed",
+      "name": "2a1. Generate Query Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [360, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/company_knowledge/points/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ vector: $json.embedding.values, limit: 3, with_payload: true }) }}",
+        "options": {}
+      },
+      "id": "node-qdrant-search",
+      "name": "2a2. Qdrant Vector Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [580, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('1. Webhook Input').item.json.body || {};\nconst query = (body.query || '').trim();\nconst sessionId = body.sessionId || 'default_session';\nconst history = Array.isArray(body.history) ? body.history.slice(-3) : [];\nconst receivedAt = Date.now();\n\nif (!query) {\n  return [{\n    json: {\n      error: 'Missing query parameter in request body.',\n      isValid: false,\n      receivedAt,\n      sessionId\n    }\n  }];\n}\n\nconst systemInstruction = 'You are a concise, real-time voice assistant for Acme Voice AI. Answer in 1 to 2 direct sentences. Never use markdown formatting, bullet points, headers, or lists. Speak naturally.';\n\nreturn [{\n  json: {\n    query,\n    sessionId,\n    history,\n    systemInstruction,\n    receivedAt,\n    isValid: true\n  }\n}];"
+      },
+      "id": "node-prompt-scaffold",
+      "name": "2b. Prompt Scaffold",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 420]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "id": "node-merge",
+      "name": "3. Merge Retrieval & Scaffold",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const scaffold = $('2b. Prompt Scaffold').first().json;\nconst retrievalTime = Date.now();\nconst ragLatencyMs = retrievalTime - scaffold.receivedAt;\n\nif (!scaffold.isValid) {\n  return [{ json: { ...scaffold, ragLatencyMs } }];\n}\n\n// Extract Qdrant search results safely\nconst qdrantResults = $('2a2. Qdrant Vector Search').item.json.result || [];\n\nconst retrievedChunks = qdrantResults.map(hit => ({\n  score: hit.score,\n  section: hit.payload?.section || 'FAQ',\n  text: hit.payload?.text || ''\n})).filter(c => c.text.length > 0);\n\n// Context cap: keep retrieved context under ~750-1000 tokens (~3000 chars)\nlet combinedContext = '';\nfor (const chunk of retrievedChunks) {\n  if ((combinedContext + chunk.text).length <= 3000) {\n    combinedContext += `[Section: ${chunk.section}]\\n${chunk.text}\\n\\n`;\n  }\n}\n\n// Format conversation turns if any\nlet conversationHistoryText = '';\nif (scaffold.history && scaffold.history.length > 0) {\n  conversationHistoryText = 'Recent Conversation:\\n' + \n    scaffold.history.map(t => `${t.role}: ${t.content}`).join('\\n') + '\\n\\n';\n}\n\nconst fullPrompt = `${scaffold.systemInstruction}\\n\\n${conversationHistoryText}Relevant Knowledge Context:\\n${combinedContext.trim() || 'No specific document found.'}\\n\\nUser Question: ${scaffold.query}`;\n\nreturn [{\n  json: {\n    query: scaffold.query,\n    sessionId: scaffold.sessionId,\n    fullPrompt,\n    retrievedChunksCount: retrievedChunks.length,\n    receivedAt: scaffold.receivedAt,\n    ragLatencyMs\n  }\n}];"
+      },
+      "id": "node-assemble-prompt",
+      "name": "4. Assemble Safe LLM Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-goog-api-key",
+              "value": "={{$env.GEMINI_API_KEY}}"
+            },
+            {
+              "name": "x-goog-api-client",
+              "value": "genai-js/0.24.1"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ contents: [{ role: 'user', parts: [{ text: $json.fullPrompt }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 150 } }) }}",
+        "options": {}
+      },
+      "id": "node-gemini-llm",
+      "name": "5. Gemini LLM Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const responseJson = $json;\nconst promptData = $('4. Assemble Safe LLM Prompt').first().json;\nconst llmCompletedAt = Date.now();\nconst llmLatencyMs = llmCompletedAt - (promptData.receivedAt + promptData.ragLatencyMs);\n\nlet fullText = '';\nif (responseJson.candidates && responseJson.candidates[0]?.content?.parts) {\n  fullText = responseJson.candidates[0].content.parts.map(p => p.text || '').join('');\n} else if (responseJson.text) {\n  fullText = responseJson.text;\n} else {\n  fullText = 'I am sorry, I could not generate a response.';\n}\n\n// Sentence & Clause buffering logic:\n// Isolate the first clean sentence for immediate TTS playback\nconst sentences = fullText.split(/(?<=[.?!])\\s+/).filter(Boolean);\nconst firstSentence = sentences.length > 0 ? sentences[0] : fullText;\n\nreturn [{\n  json: {\n    ...promptData,\n    fullText,\n    ttsInputText: firstSentence,\n    remainingText: sentences.slice(1).join(' '),\n    llmCompletedAt,\n    llmLatencyMs\n  }\n}];"
+      },
+      "id": "node-sentence-buffer",
+      "name": "6. Sentence & Clause Buffer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.sarvam.ai/text-to-speech",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api-subscription-key",
+              "value": "={{$env.SARVAM_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.ttsInputText, language_code: 'en-IN', model: 'bulbul:v3', speaker: 'shubh' }) }}",
+        "options": {}
+      },
+      "id": "node-sarvam-tts",
+      "name": "7. Sarvam TTS Synthesis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', sessionId: $('6. Sentence & Clause Buffer').first().json.sessionId, query: $('6. Sentence & Clause Buffer').first().json.query, assistantText: $('6. Sentence & Clause Buffer').first().json.fullText, ttsPhraseSynthesized: $('6. Sentence & Clause Buffer').first().json.ttsInputText, audio: $json.audios ? $json.audios[0] : null, audioFormat: 'audio/wav;base64', metrics: { ragRetrievalMs: $('6. Sentence & Clause Buffer').first().json.ragLatencyMs, llmLatencyMs: $('6. Sentence & Clause Buffer').first().json.llmLatencyMs, totalPipelineMs: Date.now() - $('6. Sentence & Clause Buffer').first().json.receivedAt, streamingLimitationNote: 'n8n executes nodes sequentially with node-level buffering. Real-time audio streaming (token-by-token TTS and WebSocket chunks) must be handled by Node.js for sub-1.5s perceived latency; n8n handles backend automation.' } }) }}",
+        "options": {}
+      },
+      "id": "node-respond-webhook",
+      "name": "8. Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1900, 300]
+    }
+  ],
+  "connections": {
+    "1. Webhook Input": {
+      "main": [
+        [
+          {
+            "node": "2a1. Generate Query Embedding",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "2b. Prompt Scaffold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2a1. Generate Query Embedding": {
+      "main": [
+        [
+          {
+            "node": "2a2. Qdrant Vector Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2a2. Qdrant Vector Search": {
+      "main": [
+        [
+          {
+            "node": "3. Merge Retrieval & Scaffold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2b. Prompt Scaffold": {
+      "main": [
+        [
+          {
+            "node": "3. Merge Retrieval & Scaffold",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "3. Merge Retrieval & Scaffold": {
+      "main": [
+        [
+          {
+            "node": "4. Assemble Safe LLM Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Assemble Safe LLM Prompt": {
+      "main": [
+        [
+          {
+            "node": "5. Gemini LLM Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Gemini LLM Call": {
+      "main": [
+        [
+          {
+            "node": "6. Sentence & Clause Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Sentence & Clause Buffer": {
+      "main": [
+        [
+          {
+            "node": "7. Sarvam TTS Synthesis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Sarvam TTS Synthesis": {
+      "main": [
+        [
+          {
+            "node": "8. Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {
+    "1. Webhook Input": [
+      {
+        "json": {
+          "headers": {},
+          "params": {},
+          "query": {},
+          "body": {
+            "query": "What are your pricing plans and what does Pro include?",
+            "sessionId": "manual_test_session_ui"
+          }
+        }
+      }
+    ]
+  }
+}

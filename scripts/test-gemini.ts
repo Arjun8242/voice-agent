@@ -3,11 +3,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 dotenv.config();
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API;
+const apiKey = process.env.GEMINI_API_KEY;
 const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 if (!apiKey) {
-  console.error("❌ Error: GEMINI_API_KEY or GOOGLE_GEMINI_API not found in environment.");
+  console.error("❌ Error: GEMINI_API_KEY not found in environment.");
   process.exit(1);
 }
 
@@ -18,8 +18,14 @@ async function testGeminiStreaming() {
   console.log(`Model: ${modelName}`);
   console.log(`Prompt: "What is your pricing model? Explain in 2 concise sentences."\n`);
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: modelName });
+  const genAI = new GoogleGenerativeAI(apiKey!);
+  const model = genAI.getGenerativeModel({
+    model: modelName!,
+    generationConfig: {
+      maxOutputTokens: 150,
+      temperature: 0.3,
+    },
+  });
 
   const prompt = "What is your pricing model? Explain in 2 concise sentences.";
   
