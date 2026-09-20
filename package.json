@@ -12,7 +12,8 @@
     "test:sarvam-tts": "tsx scripts/test-sarvam-tts.ts",
     "test:rag": "tsx scripts/test-rag.ts",
     "test:n8n": "tsx scripts/test-n8n-pipeline.ts",
-    "test:hotpath": "tsx scripts/test-hotpath.ts"
+    "test:hotpath": "tsx scripts/test-hotpath.ts",
+    "ingest": "tsx scripts/ingest.ts"
   },
   "dependencies": {
     "@google/genai": "^0.2.0",

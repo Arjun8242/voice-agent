@@ -7,6 +7,7 @@ export interface RetrievedChunk {
   metadata: {
     source?: string;
     section?: string;
+    id?: string;
   };
 }
 
@@ -62,6 +63,7 @@ export async function retrieve(
       text?: string;
       source?: string;
       section?: string;
+      id?: string;
     };
 
     const chunkText = payload?.text || "";
@@ -73,6 +75,7 @@ export async function retrieve(
         metadata: {
           source: payload?.source,
           section: payload?.section,
+          id: payload?.id,
         },
       });
 
