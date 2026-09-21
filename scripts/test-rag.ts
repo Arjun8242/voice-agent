@@ -1,7 +1,7 @@
 import path from "path";
 import dotenv from "dotenv";
 import { ingestKnowledgeBase } from "../src/services/rag/ingestion.js";
-import { retrieve } from "../src/services/rag/retriever.js";
+import { retrieveLocal as retrieve, initLocalRetriever } from "../src/services/rag/local_retriever.js";
 
 dotenv.config();
 
@@ -30,6 +30,8 @@ async function runRAGBenchmark() {
   ];
 
   console.log("--- Step 2: Testing RAG Retrieval & Measuring Latency ---");
+
+  await initLocalRetriever();
 
   const latencies: number[] = [];
 

@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
-import { RetrievedChunk, RetrievedContext } from "./retriever.js";
+import { RetrievedContext } from "./retriever.js";
 
 dotenv.config();
 
@@ -21,111 +21,122 @@ export interface AnswerGenerationResult {
   }[];
 }
 
-const FALLBACK_ANSWER = "I could not confirm that from the approved Harbor & Pine information, so I do not want to guess. I can help you request human support.";
+// Conversation turn — matches the Turn interface in hotpath.ts
+export interface Turn {
+  role: "user" | "assistant";
+  text: string;
+}
 
-export async function generateAnswer(
-  query: string,
-  retrievedContext: RetrievedContext
-): Promise<AnswerGenerationResult> {
-  // If no chunks were returned, short-circuit and return fallback.
+export const FALLBACK_ANSWER =
+  "I could not confirm that from the approved Harbor & Pine information, so I do not want to guess. I can help you request human support.";
+
+// -----------------------------------------------------------------------
+// Shared: build the grounded system instruction (Harbor & Pine rules)
+// -----------------------------------------------------------------------
+export function buildSystemInstruction(): string {
+  return `You are the phone support assistant for Harbor & Pine Living.
+
+  Answer ONLY from the provided context. Never use outside knowledge or invent policies, prices, times, specifications, guarantees, or exceptions. Keep any limits the context states (estimates, "not guaranteed", "subject to review").
+  If the context does not cover the question, reply with exactly: "I could not confirm that from the approved Harbor & Pine information, so I do not want to guess. I can help you request human support."
+  If the context says a human must handle something, say you cannot do it yourself but can start a request. Never say a refund, cancellation, change, or exception has been completed or promised.
+  Speak naturally in 1 to 3 short sentences of plain text, direct answer first. No lists, headings, or Markdown. Do not mention the context, sources, or how you work.`;
+}
+
+// -----------------------------------------------------------------------
+// Shared: format retrieved chunks into readable LLM context
+// -----------------------------------------------------------------------
+export function formatRetrievedContext(retrievedContext: RetrievedContext): string {
   if (!retrievedContext.chunks || retrievedContext.chunks.length === 0) {
-    return {
-      answer: FALLBACK_ANSWER,
-      query,
-      retrievedChunks: [],
-    };
+    return "No relevant Harbor & Pine information was found for this query.";
   }
 
-  // Format retrieved chunks according to rules
-  const formattedContext = retrievedContext.chunks
+  return retrievedContext.chunks
     .map((chunk) => {
       const id = chunk.metadata.id || "Unknown";
       const title = chunk.metadata.section || "Untitled";
-      return `[${id}]\nTitle: ${title}\nContent:\n${chunk.text}`;
+      return `[${id}] ${title}\n${chunk.text}`;
     })
     .join("\n\n");
+}
 
-  const systemInstruction = `You are a Harbor & Pine Living customer-support assistant speaking over the phone.
+// -----------------------------------------------------------------------
+// Shared: format conversation history into prompt text
+// -----------------------------------------------------------------------
+function formatHistory(history: Turn[]): string {
+  if (!history || history.length === 0) return "";
+  return (
+    "Recent conversation:\n" +
+    history.map((t) => `${t.role === "user" ? "Customer" : "Assistant"}: ${t.text}`).join("\n") +
+    "\n\n"
+  );
+}
 
-PRINCIPLES:
-1. The retrieved Harbor & Pine context is your ONLY source of truth.
-2. Answer the user's question ONLY using information supported by the retrieved context.
-3. Do NOT use general world knowledge to fill missing information.
-4. Do NOT invent policies, prices, delivery times, product specifications, refund guarantees, exceptions, or procedures.
-5. If the retrieved context does not contain enough information to answer:
-   - Clearly say that the information could not be confirmed.
-   - Do not guess.
-   - Offer human support when appropriate.
-6. Follow the limitations contained in the retrieved Harbor & Pine content.
-7. If the retrieved context says that a human must review something, do not claim that you (the assistant) completed the action.
-8. Do not claim that a refund, cancellation, address change, order edit, payment action, privacy request, replacement, compensation, or policy exception has been completed when the context says the assistant cannot perform it.
+// -----------------------------------------------------------------------
+// Non-streaming: generateAnswer (used by test-llm.ts, batch tests)
+// -----------------------------------------------------------------------
+export async function generateAnswer(
+  query: string,
+  retrievedContext: RetrievedContext,
+  history: Turn[] = []
+): Promise<AnswerGenerationResult> {
+  const retrievedChunks = (retrievedContext.chunks || []).map((c) => ({
+    id: c.metadata.id || "Unknown",
+    score: c.score,
+  }));
 
-VOICE RESPONSE STYLE:
-- Keep responses concise.
-- Prefer approximately 1-3 sentences when possible.
-- Generally stay around 40-100 words.
-- Give the direct answer first.
-- Use natural conversational English.
-- No Markdown.
-- No bullet points.
-- No numbered lists.
-- No headings.
-- No tables.
-- Avoid unnecessary repetition.
-- Avoid phrases like "According to the retrieved context".
-- Do not mention Qdrant, embeddings, RAG, chunks, or internal architecture.
-- Do not sound robotic.
-The answer should sound like something a customer-support representative would naturally say over the phone.
-If you do not know the answer, use the approved fallback wording: "I could not confirm that from the approved Harbor & Pine information, so I do not want to guess. I can help you request human support."
-`;
+  if (!retrievedContext.chunks || retrievedContext.chunks.length === 0) {
+    return { answer: FALLBACK_ANSWER, query, retrievedChunks: [] };
+  }
 
-  const userPrompt = `Customer question:
-${query}
+  const systemInstruction = buildSystemInstruction();
+  const formattedContext = formatRetrievedContext(retrievedContext);
+  const historyText = formatHistory(history);
 
-Retrieved Harbor & Pine information:
-${formattedContext}
-
-Generate the final customer-facing answer.`;
+  const userPrompt = `${historyText}Retrieved Harbor & Pine information:\n${formattedContext}\n\nCustomer question: ${query}\n\nGenerate the customer-facing answer.`;
 
   try {
     const model = genAI.getGenerativeModel({
       model: GEMINI_MODEL,
       systemInstruction: { parts: [{ text: systemInstruction }], role: "system" },
+      generationConfig: { temperature: 0.3, maxOutputTokens: 150 },
     });
 
     const response = await model.generateContent(userPrompt);
     const answer = response.response.text().trim();
 
-    // Map extracted chunk metadata for the result
-    const retrievedChunks = retrievedContext.chunks.map((c) => ({
-      id: c.metadata.id || "Unknown",
-      score: c.score,
-    }));
-
-    // If the LLM returned an empty response for some reason
     if (!answer) {
-      return {
-        answer: FALLBACK_ANSWER,
-        query,
-        retrievedChunks,
-      };
+      return { answer: FALLBACK_ANSWER, query, retrievedChunks };
     }
 
-    return {
-      answer,
-      query,
-      retrievedChunks,
-    };
+    return { answer, query, retrievedChunks };
   } catch (error) {
     console.error("LLM Generation failed:", error);
-    // Return fallback on LLM failure instead of crashing silently
-    return {
-      answer: FALLBACK_ANSWER,
-      query,
-      retrievedChunks: retrievedContext.chunks.map((c) => ({
-        id: c.metadata.id || "Unknown",
-        score: c.score,
-      })),
-    };
+    return { answer: FALLBACK_ANSWER, query, retrievedChunks };
   }
+}
+
+// -----------------------------------------------------------------------
+// Streaming: generateAnswerStream
+// Returns the raw stream from Gemini so hotpath.ts can forward tokens
+// incrementally to the sentence buffer → TTS → browser.
+// -----------------------------------------------------------------------
+export async function generateAnswerStream(
+  query: string,
+  retrievedContext: RetrievedContext,
+  history: Turn[] = []
+) {
+  const systemInstruction = buildSystemInstruction();
+  const formattedContext = formatRetrievedContext(retrievedContext);
+  const historyText = formatHistory(history);
+
+  const userPrompt = `${historyText}Retrieved Harbor & Pine information:\n${formattedContext}\n\nCustomer question: ${query}\n\nGenerate the customer-facing answer.`;
+
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: { parts: [{ text: systemInstruction }], role: "system" },
+    generationConfig: { temperature: 0.3, maxOutputTokens: 150 },
+  });
+
+  // Returns StreamGenerateContentResult — caller iterates result.stream
+  return model.generateContentStream(userPrompt);
 }

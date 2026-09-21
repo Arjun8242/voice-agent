@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { startMic, stopMic } from '$lib/mic';
-  import { initPlayback, appendChunk, signalDone, resetPlayback } from '$lib/playback';
-  import { Mic, MicOff, Volume2, Loader } from '@lucide/svelte';
+  import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone } from '$lib/playback';
+  import Mic from '@lucide/svelte/icons/mic';
+  import MicOff from '@lucide/svelte/icons/mic-off';
+  import Volume2 from '@lucide/svelte/icons/volume-2';
+  import Loader from '@lucide/svelte/icons/loader';
 
   // ── State ────────────────────────────────────────────────────────────────
   type Status = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -41,12 +44,19 @@
       switch (msg.type) {
         case 'transcript_partial':
           partialText = msg.text;
-          if (status === 'listening') status = 'thinking';
+          if (status === 'listening') {
+            status = 'thinking';
+            stopMic();
+          }
           break;
 
         case 'transcript_final':
           finalText = msg.text;
           partialText = '';
+          if (status === 'listening') {
+            status = 'thinking';
+            stopMic();
+          }
           break;
 
         case 'assistant_text':
@@ -62,6 +72,7 @@
           if (msg.isFirst && msg.firstAudioLatencyMs) {
             metrics.ttfaMs = msg.firstAudioLatencyMs;
           }
+          markSentenceDone(msg.sentenceId);
           break;
 
         case 'done':
@@ -72,6 +83,7 @@
 
         case 'error':
           errorMsg = msg.message;
+          if (status === 'listening') stopMic();
           status = 'idle';
           break;
       }

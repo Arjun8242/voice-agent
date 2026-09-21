@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { retrieve } from "../src/services/rag/retriever.js";
+import { retrieveLocal as retrieve, initLocalRetriever } from "../src/services/rag/local_retriever.js";
 
 dotenv.config();
 
@@ -13,6 +13,7 @@ const queries = [
 ];
 
 async function testRetrieval() {
+  await initLocalRetriever();
   console.log("=== Retrieval Test ===");
   for (const query of queries) {
     console.log(`\nQuery: "${query}"`);

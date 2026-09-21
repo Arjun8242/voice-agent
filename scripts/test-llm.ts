@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { retrieve } from "../src/services/rag/retriever.js";
+import { retrieveLocal as retrieve, initLocalRetriever } from "../src/services/rag/local_retriever.js";
 import { generateAnswer } from "../src/services/rag/llm.js";
 
 dotenv.config();
@@ -14,6 +14,7 @@ const queries = [
 ];
 
 async function testLLM() {
+  await initLocalRetriever();
   console.log("=== LLM Answer Generation Test ===\n");
   
   for (const query of queries) {
