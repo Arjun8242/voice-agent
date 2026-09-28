@@ -7,23 +7,16 @@ dotenv.config();
 
 const PORT = 3001;
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "";
-const SARVAM_STT_URL = "wss://api.sarvam.ai/speech-to-text/ws" +
+const SARVAM_STT_URL = "wss://api.sarvam.ai/speech-to-text-realtime/ws" +
   "?language_code=en-IN" +
-  "&model=saaras:v4" +
-  "&mode=transcribe" +
-  "&sample_rate=16000" +
-  "&input_audio_codec=pcm_s16le" +
-  "&high_vad_sensitivity=true";
+  "&model=saaras:v3-realtime" +
+  "&stream_type=fast";
 
 
-if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY not set in .env");
-if (!SARVAM_API_KEY) throw new Error("SARVAM_API_KEY not set in .env");
 
 // ---------------------------------------------------------------------------
 // Session state per WebSocket connection
 // ---------------------------------------------------------------------------
-
-// Turn is re-exported from llm.ts for shared typing
 
 interface Session {
   sttWs: WebSocket | null;
@@ -84,7 +77,7 @@ async function streamTTSChunks(
         text,
         language_code: "en-IN",
         model: "bulbul:v3",
-        speaker: "riya",
+        speaker: "suhani",
         output_audio_codec: "mp3",
       }),
     });
@@ -307,8 +300,7 @@ function openSTT(
   session.sttWs = sttWs;
 
   sttWs.on("open", () => {
-    console.log("[STT] Connected to Sarvam STT");
-
+    console.log("[STT] Connected to Sarvam Realtime STT");
   });
 
   sttWs.on("message", (data: Buffer) => {
@@ -317,44 +309,59 @@ function openSTT(
 
     console.log("[STT] Event:", JSON.stringify(event));
 
-    if (event.type === "data") {
-      const text = event.data?.transcript ?? "";
+    // Realtime API: session acknowledgement
+    if (event.event === "session.begin") {
+      console.log("[STT] Session begun, request_id:", event.request_id);
+      return;
+    }
+
+    // Realtime API: transcript events (transcript / transcript.partial / transcript.final / data)
+    if (
+      event.event === "transcript" ||
+      event.event?.startsWith("transcript") ||
+      event.type === "data"
+    ) {
+      const text: string =
+        event.transcript ?? event.text ?? event.data?.transcript ?? "";
+      const isFinal: boolean = Boolean(
+        event.is_final ||
+        event.event === "transcript.final" ||
+        event.type === "final"
+      );
 
       if (!text.trim()) return;
 
-      console.log(`[STT] Transcript: "${text}"`);
-      send("transcript_partial", { text });
-
-      session.partialText = text;
-
-      // ── Debounce Trigger ──────────────────────────────────────────────────
-      // Since the new API doesn't always send an explicit is_final flag,
-      // we wait for 1 second of silence. If the transcript stops updating for 
-      // 1 second, we assume the user is done speaking and trigger the AI.
-      clearTimeout(session.debounceTimer ?? undefined);
-      session.debounceTimer = setTimeout(() => {
-        if (!session.pipelineRunning && session.partialText.trim()) {
-          console.log(`[STT] Silence detected. Triggering pipeline with: "${session.partialText}"`);
+      if (isFinal) {
+        // Final transcript — cancel any pending debounce and fire pipeline
+        clearTimeout(session.debounceTimer ?? undefined);
+        session.debounceTimer = null;
+        session.partialText = "";
+        console.log(`[STT] Final: "${text}"`);
+        send("transcript_final", { text });
+        if (!session.pipelineRunning) {
           session.pipelineRunning = true;
-          send("transcript_final", { text: session.partialText });
-          handleQuery(ws, send, session.partialText, session).catch(console.error);
+          handleQuery(ws, send, text, session).catch(console.error);
         }
-      }, 1000);
-
-  }
+      } else {
+        // Partial transcript — update UI only
+        session.partialText = text;
+        console.log(`[STT] Partial: "${text}"`);
+        send("transcript_partial", { text });
+      }
+    }
   });
 
-sttWs.on("error", (err) => {
-  console.error("[STT] Error:", err.message);
-  send("error", { message: "STT error: " + err.message });
-});
+  sttWs.on("error", (err) => {
+    console.error("[STT] Error:", err.message);
+    send("error", { message: "STT error: " + err.message });
+  });
 
-sttWs.on("close", (code, reason) => {
-  console.log(
-    `[STT] Disconnected. code=${code}, reason=${reason.toString()}`
-  );
-  session.sttWs = null;
-});
+  sttWs.on("close", (code, reason) => {
+    console.log(
+      `[STT] Disconnected. code=${code}, reason=${reason.toString()}`
+    );
+    session.sttWs = null;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -388,13 +395,11 @@ wss.on("connection", (ws) => {
       }
       if (!session.sttWs) openSTT(ws, send, session);
       if (session.sttWs?.readyState === WebSocket.OPEN) {
+        // Realtime API: { event: "audio_input", audio: "<base64>" }
         const audioBase64 = raw.toString("base64");
         session.sttWs.send(JSON.stringify({
-          audio: {
-            data: audioBase64,
-            sample_rate: "16000",
-            encoding: "audio/wav",
-          },
+          event: "audio_input",
+          audio: audioBase64,
         }));
       }
       return;

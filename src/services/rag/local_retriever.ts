@@ -52,7 +52,7 @@ export function prefetchQuery(partial: string): void {
  
 /** Call once at server start, BEFORE opening the WebSocket server. */
 export async function initLocalRetriever(
-  jsonFilePath: string = path.resolve(process.cwd(), "data", "processed", "harbor_pine_chunks.json")
+  jsonFilePath: string = path.resolve(process.cwd(), "data", "KB_chunks", "harbor_pine_chunks.json")
 ): Promise<void> {
   const t0 = performance.now();
   extractor = await pipeline("feature-extraction", MODEL, { dtype: "q8" });
