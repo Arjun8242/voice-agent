@@ -1,42 +1,52 @@
 /**
  * PCM Processor — AudioWorkletProcessor
- * Downsamples from source sample rate (e.g. 48kHz) to 16kHz,
- * quantizes to Int16, and posts raw binary frames to the main thread.
- * Each frame is a small ArrayBuffer (128 input samples → ~43 output samples).
+ * Accumulates samples into a 1600-sample (100 ms @ 16 kHz) persistent buffer.
+ * Decimates only when AudioContext is not already at 16 kHz.
+ * Emits Int16 PCM as transferable ArrayBuffer to the main thread.
  */
 class PcmProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this._buffer = [];
-    this._inputRate = 0; // set on first process()
-    this._targetRate = 16000;
-    this._ratio = 1;
+    this.buf = new Int16Array(1600);
+    this.n = 0;
+    this.ratio = 1; // overridden on first process() if sampleRate != 16000
+    this.initialized = false;
   }
 
   process(inputs) {
-    const input = inputs[0];
-    if (!input || !input[0]) return true;
+    const ch = inputs[0]?.[0];
+    if (!ch) return true;
 
-    const samples = input[0]; // Float32Array, mono channel
-
-    // Detect sample rate from AudioWorkletGlobalScope on first call
-    if (this._inputRate === 0) {
-      this._inputRate = sampleRate; // global in AudioWorkletGlobalScope
-      this._ratio = this._inputRate / this._targetRate;
+    if (!this.initialized) {
+      this.ratio = sampleRate / 16000; // sampleRate is global in AudioWorkletGlobalScope
+      this.initialized = true;
     }
 
-    // Downsample: simple linear decimation (low overhead, acceptable for STT)
-    const outLen = Math.floor(samples.length / this._ratio);
-    const out = new Int16Array(outLen);
-
-    for (let i = 0; i < outLen; i++) {
-      const srcIdx = Math.floor(i * this._ratio);
-      // Clamp and convert float32 [-1,1] → int16 [-32768, 32767]
-      const clamped = Math.max(-1, Math.min(1, samples[srcIdx]));
-      out[i] = clamped < 0 ? clamped * 32768 : clamped * 32767;
+    if (this.ratio === 1) {
+      // AudioContext is already 16 kHz — no decimation needed
+      for (let i = 0; i < ch.length; i++) {
+        const s = Math.max(-1, Math.min(1, ch[i]));
+        this.buf[this.n++] = s < 0 ? s * 32768 : s * 32767;
+        if (this.n === this.buf.length) {
+          const out = this.buf.slice().buffer;
+          this.port.postMessage(out, [out]);
+          this.n = 0;
+        }
+      }
+    } else {
+      // Decimate from source rate to 16 kHz
+      const outLen = Math.floor(ch.length / this.ratio);
+      for (let i = 0; i < outLen; i++) {
+        const s = Math.max(-1, Math.min(1, ch[Math.floor(i * this.ratio)]));
+        this.buf[this.n++] = s < 0 ? s * 32768 : s * 32767;
+        if (this.n === this.buf.length) {
+          const out = this.buf.slice().buffer;
+          this.port.postMessage(out, [out]);
+          this.n = 0;
+        }
+      }
     }
 
-    this.port.postMessage(out.buffer, [out.buffer]);
     return true;
   }
 }

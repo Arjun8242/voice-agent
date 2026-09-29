@@ -44,19 +44,12 @@
       switch (msg.type) {
         case 'transcript_partial':
           partialText = msg.text;
-          if (status === 'listening') {
-            status = 'thinking';
-            stopMic();
-          }
           break;
 
         case 'transcript_final':
           finalText = msg.text;
           partialText = '';
-          if (status === 'listening') {
-            status = 'thinking';
-            stopMic();
-          }
+          status = 'thinking';
           break;
 
         case 'assistant_text':
@@ -78,12 +71,20 @@
         case 'done':
           metrics.totalMs = msg.totalMs;
           signalDone();
-          status = 'idle';
+          // Return to listening — microphone stays active for next user turn
+          status = 'listening';
+          break;
+
+        case 'interrupted':
+          // Server superseded current turn due to barge-in
+          resetPlayback(audioEl);
+          assistantText = '';
+          status = 'listening';
           break;
 
         case 'error':
           errorMsg = msg.message;
-          if (status === 'listening') stopMic();
+          stopMic();
           status = 'idle';
           break;
       }
@@ -92,14 +93,15 @@
 
   // ── Mic toggle ───────────────────────────────────────────────────────────
   async function toggleMic() {
-    if (status === 'listening') {
+    if (status !== 'idle') {
       stopMic();
       status = 'idle';
       return;
     }
 
-    // Reset state for new turn
+    // Reset state for new conversation session
     partialText = '';
+    finalText = '';
     assistantText = '';
     errorMsg = '';
     metrics = {};

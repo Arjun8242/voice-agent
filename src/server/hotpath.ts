@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { retrieveLocal as retrieve, initLocalRetriever, prefetchQuery } from "../services/rag/local_retriever.js";
+import { retrieveLocal as retrieve, initLocalRetriever } from "../services/rag/local_retriever.js";
 import { generateAnswerStream, FALLBACK_ANSWER, Turn } from "../services/rag/llm.js";
 import dotenv from "dotenv";
 
@@ -7,12 +7,14 @@ dotenv.config();
 
 const PORT = 3001;
 const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "";
-const SARVAM_STT_URL = "wss://api.sarvam.ai/speech-to-text-realtime/ws" +
+const SARVAM_STT_URL =
+  "wss://api.sarvam.ai/speech-to-text-realtime/ws" +
   "?language_code=en-IN" +
   "&model=saaras:v3-realtime" +
   "&stream_type=fast";
 
-
+// Max number of audio messages to queue while STT socket is connecting
+const STT_QUEUE_MAX = 50;
 
 // ---------------------------------------------------------------------------
 // Session state per WebSocket connection
@@ -20,16 +22,24 @@ const SARVAM_STT_URL = "wss://api.sarvam.ai/speech-to-text-realtime/ws" +
 
 interface Session {
   sttWs: WebSocket | null;
-  partialText: string;
-  debounceTimer: ReturnType<typeof setTimeout> | null;
+  sttQueue: string[];         // base64 audio_input JSON strings buffered while STT connects
+  pingTimer: ReturnType<typeof setInterval> | null;
+  turnId: number;             // monotonically increasing; supersedes old turns on barge-in
+  turnAbort: AbortController; // aborted when a new turn supersedes the current one
   pipelineRunning: boolean;
   history: Turn[];
-  audioBytesReceived: number;
-  audioChunksReceived: number;
 }
 
 function newSession(): Session {
-  return { sttWs: null, partialText: "", debounceTimer: null, pipelineRunning: false, history: [], audioBytesReceived: 0, audioChunksReceived: 0 };
+  return {
+    sttWs: null,
+    sttQueue: [],
+    pingTimer: null,
+    turnId: 0,
+    turnAbort: new AbortController(),
+    pipelineRunning: false,
+    history: [],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -38,21 +48,16 @@ function newSession(): Session {
 
 function extractNextSentence(buffer: string) {
   const index = buffer.search(/[.!?]/);
-
-  if (index === -1) {
-    return null;
-  }
-
-  const sentence = buffer.slice(0, index + 1).trim();
-  const remaining = buffer.slice(index + 1).trim();
-
+  if (index === -1) return null;
   return {
-    sentence,
-    remaining,
+    sentence: buffer.slice(0, index + 1).trim(),
+    remaining: buffer.slice(index + 1).trim(),
   };
 }
 
-// Ek sentence ko Sarvam TTS API ko bhejta hai → audio ko stream me receive karta hai → har audio chunk WebSocket se frontend ko bhejta hai → latency/statistics track karta hai.
+// ---------------------------------------------------------------------------
+// TTS: stream one sentence to Sarvam, forward chunks to browser
+// ---------------------------------------------------------------------------
 
 async function streamTTSChunks(
   ws: WebSocket,
@@ -60,7 +65,8 @@ async function streamTTSChunks(
   sentenceId: number,
   text: string,
   elapsed: () => number,
-  firstAudioRef: { sentMs: number | null }
+  firstAudioRef: { sentMs: number | null },
+  signal: AbortSignal
 ): Promise<void> {
   const ttsConnectionStartMs = elapsed();
   send("tts_start", { sentenceId, text: text.slice(0, 80), ttsConnectionStartMs });
@@ -80,11 +86,16 @@ async function streamTTSChunks(
         speaker: "suhani",
         output_audio_codec: "mp3",
       }),
+      signal,
     });
 
     const ttsHttpResponseMs = elapsed();
-    // This measures TTS HTTP connection + server TTFA (time-to-first-audio-byte)
-    send("metric", { stage: "tts_http_response", sentenceId, ttsHttpResponseMs, ttsConnectionLatencyMs: ttsHttpResponseMs - ttsConnectionStartMs });
+    send("metric", {
+      stage: "tts_http_response",
+      sentenceId,
+      ttsHttpResponseMs,
+      ttsConnectionLatencyMs: ttsHttpResponseMs - ttsConnectionStartMs,
+    });
 
     if (!res.ok) {
       const errText = await res.text();
@@ -98,7 +109,6 @@ async function streamTTSChunks(
     }
 
     const reader = res.body.getReader();
-    //sentence id ko 4 bytes meh convert, ye har audio packet ke start mein attach hota hai
     const idBuf = Buffer.allocUnsafe(4);
     idBuf.writeUInt32LE(sentenceId, 0);
 
@@ -107,18 +117,22 @@ async function streamTTSChunks(
       if (done) break;
       if (!value || value.byteLength === 0) continue;
       if (ws.readyState !== WebSocket.OPEN) { reader.cancel(); return; }
+      if (signal.aborted) { reader.cancel(); return; }
 
       const now = elapsed();
       if (ttsFirstAudioMs === null) {
         ttsFirstAudioMs = now;
-        send("metric", { stage: "tts_first_audio_chunk", sentenceId, ttsFirstAudioMs, ttsDecodeLatencyMs: ttsFirstAudioMs - ttsHttpResponseMs });
+        send("metric", {
+          stage: "tts_first_audio_chunk",
+          sentenceId,
+          ttsFirstAudioMs,
+          ttsDecodeLatencyMs: ttsFirstAudioMs - ttsHttpResponseMs,
+        });
       }
 
-      // [sentenceId(4B)][mp3 chunk] — no buffering, forwarded immediately
       send(Buffer.concat([idBuf, Buffer.from(value)]));
       chunkCount++;
 
-      //pehle audio packet ka timestamp
       if (firstAudioRef.sentMs === null) {
         firstAudioRef.sentMs = now;
         isFirstForStream = true;
@@ -127,13 +141,17 @@ async function streamTTSChunks(
       }
     }
   } catch (err: any) {
-    console.error("[TTS] Fetch error:", err.message);
-    send("tts_error", { sentenceId, message: err.message });
+    if (err.name !== "AbortError") {
+      console.error("[TTS] Fetch error:", err.message);
+      send("tts_error", { sentenceId, message: err.message });
+    }
     return;
   }
 
   send("tts_end", {
-    sentenceId, chunkCount, ttsFirstAudioMs,
+    sentenceId,
+    chunkCount,
+    ttsFirstAudioMs,
     isFirst: isFirstForStream,
     firstAudioLatencyMs: isFirstForStream ? firstAudioRef.sentMs : null,
     trueStreaming: ttsFirstAudioMs !== null && chunkCount > 1,
@@ -141,54 +159,53 @@ async function streamTTSChunks(
 }
 
 // ---------------------------------------------------------------------------
-// Streaming LLM is now delegated to llm.ts (generateAnswerStream)
-// which enforces Harbor & Pine grounding rules and voice response style.
-
-// ---------------------------------------------------------------------------
-// Per-connection query handler (called from STT partial trigger)
+// Per-connection query handler — guarded by turnId throughout
 // ---------------------------------------------------------------------------
 
 async function handleQuery(
   ws: WebSocket,
   send: (type: string | Buffer, payload?: object) => void,
   query: string,
-  session: Session
+  session: Session,
+  turn: number,
+  signal: AbortSignal
 ): Promise<void> {
   const time_initial = performance.now();
   const elapsed = () => Math.round(performance.now() - time_initial);
 
-  // ── Critical-path timestamps ──────────────────────────────────────────────
   const ts: Record<string, number> = {};
   const mark = (label: string) => { ts[label] = elapsed(); };
 
-  // ── Step 1: RAG Retrieval (Gemini embedding → Qdrant) ────────────────────
+  // ── Step 1: RAG ──────────────────────────────────────────────────────────
   mark("embeddingStart");
   let ragResult: Awaited<ReturnType<typeof retrieve>>;
   try {
     ragResult = await retrieve(query, 3);
-    mark("ragEnd");
-    ts["embeddingEnd"] = ts["embeddingStart"] + ragResult.embedLatencyMs;
-    ts["qdrantStart"] = ts["embeddingEnd"];
-    ts["qdrantEnd"] = ts["qdrantStart"] + ragResult.qdrantLatencyMs;
-
-    send("metric", {
-      stage: "rag_complete",
-      ragLatencyMs: ragResult.latencyMs,
-      embedLatencyMs: ragResult.embedLatencyMs,
-      qdrantLatencyMs: ragResult.qdrantLatencyMs,
-      chunksFound: ragResult.chunks.length,
-      // Breakdown timestamps (ms since query received)
-      embeddingStartMs: ts["embeddingStart"],
-      embeddingEndMs: ts["embeddingEnd"],
-      qdrantStartMs: ts["qdrantStart"],
-      qdrantEndMs: ts["qdrantEnd"],
-      ragEndMs: ts["ragEnd"],
-    });
   } catch (err: any) {
     send("error", { message: "RAG failed: " + err.message });
-    session.pipelineRunning = false;
     return;
   }
+
+  // Superseded while waiting for RAG?
+  if (turn !== session.turnId) return;
+
+  mark("ragEnd");
+  ts["embeddingEnd"] = ts["embeddingStart"] + ragResult.embedLatencyMs;
+  ts["qdrantStart"] = ts["embeddingEnd"];
+  ts["qdrantEnd"] = ts["qdrantStart"] + ragResult.qdrantLatencyMs;
+
+  send("metric", {
+    stage: "rag_complete",
+    ragLatencyMs: ragResult.latencyMs,
+    embedLatencyMs: ragResult.embedLatencyMs,
+    qdrantLatencyMs: ragResult.qdrantLatencyMs,
+    chunksFound: ragResult.chunks.length,
+    embeddingStartMs: ts["embeddingStart"],
+    embeddingEndMs: ts["embeddingEnd"],
+    qdrantStartMs: ts["qdrantStart"],
+    qdrantEndMs: ts["qdrantEnd"],
+    ragEndMs: ts["ragEnd"],
+  });
 
   // ── Step 2: Streaming Gemini LLM ─────────────────────────────────────────
   let sentenceBuffer = "";
@@ -199,16 +216,16 @@ async function handleQuery(
   let assistantResponse = "";
   const sentenceReadyTimes: number[] = [];
 
-  // As each sentence boundary is detected, immediately flush to Sarvam TTS stream
   const flushSentence = (sentence: string) => {
+    if (turn !== session.turnId) return; // superseded
     const sentenceId = sentenceCounter++;
     const sentenceReadyMs = elapsed();
     sentenceReadyTimes.push(sentenceReadyMs);
     console.log(`[hotpath] Sentence #${sentenceId} ready at ${sentenceReadyMs}ms: "${sentence.slice(0, 60)}…"`);
     send("metric", { stage: "sentence_ready", sentenceId, sentenceReadyMs });
     if (ws.readyState === WebSocket.OPEN) {
-      const p = streamTTSChunks(ws, send, sentenceId, sentence, elapsed, firstAudioRef).catch((err) => {
-        console.error(`[hotpath] TTS error sentence #${sentenceId}:`, err.message);
+      const p = streamTTSChunks(ws, send, sentenceId, sentence, elapsed, firstAudioRef, signal).catch((err) => {
+        if (err.name !== "AbortError") console.error(`[hotpath] TTS error sentence #${sentenceId}:`, err.message);
       });
       ttsPromises.push(p);
     }
@@ -226,17 +243,23 @@ async function handleQuery(
 
       for await (const chunk of streamResult.stream) {
         if (ws.readyState !== WebSocket.OPEN) break;
+        if (signal.aborted || turn !== session.turnId) break;
+
         const tokenText = chunk.text();
         if (!tokenText) continue;
 
         if (geminiFirstTokenMs === null) {
           geminiFirstTokenMs = elapsed();
           mark("llmFirstToken");
-          send("metric", { stage: "gemini_first_token", ttftMs: geminiFirstTokenMs, llmTTFT: geminiFirstTokenMs - ts["llmStart"] });
+          send("metric", {
+            stage: "gemini_first_token",
+            ttftMs: geminiFirstTokenMs,
+            llmTTFT: geminiFirstTokenMs - ts["llmStart"],
+          });
         }
 
         assistantResponse += tokenText;
-        send("assistant_text", { text: tokenText }); // stream text to UI
+        send("assistant_text", { text: tokenText });
 
         sentenceBuffer += tokenText;
         let extracted = extractNextSentence(sentenceBuffer);
@@ -248,14 +271,20 @@ async function handleQuery(
       }
 
       mark("llmEnd");
-      if (sentenceBuffer.trim()) flushSentence(sentenceBuffer.trim());
+
+      // Flush any trailing text that didn't end with punctuation
+      if (sentenceBuffer.trim() && turn === session.turnId) {
+        flushSentence(sentenceBuffer.trim());
+      }
     }
 
     await Promise.all(ttsPromises);
+
+    if (turn !== session.turnId) return; // superseded after TTS
+
     mark("ttsEnd");
     send("done", { totalMs: elapsed() });
 
-    // Emit final latency breakdown for analysis
     send("metrics_summary", {
       embeddingLatencyMs: ragResult.embedLatencyMs,
       qdrantLatencyMs: ragResult.qdrantLatencyMs,
@@ -263,7 +292,9 @@ async function handleQuery(
       llmStartMs: ts["llmStart"] ?? null,
       llmFirstTokenMs: ts["llmFirstToken"] ?? null,
       llmEndMs: ts["llmEnd"] ?? null,
-      llmTTFT: ts["llmFirstToken"] != null && ts["llmStart"] != null ? ts["llmFirstToken"] - ts["llmStart"] : null,
+      llmTTFT: ts["llmFirstToken"] != null && ts["llmStart"] != null
+        ? ts["llmFirstToken"] - ts["llmStart"]
+        : null,
       firstSentenceReadyMs: sentenceReadyTimes[0] ?? null,
       ttsEndMs: ts["ttsEnd"] ?? null,
       browserFirstAudioMs: firstAudioRef.sentMs,
@@ -277,16 +308,24 @@ async function handleQuery(
     }
 
   } catch (err: any) {
-    console.error("[hotpath] Gemini streaming error:", err.message);
-    send("error", { message: "LLM streaming error: " + err.message });
+    if (err.name !== "AbortError") {
+      console.error("[hotpath] Streaming error:", err.message);
+      send("error", { message: "LLM streaming error: " + err.message });
+    }
   } finally {
-    session.pipelineRunning = false;
+    if (turn === session.turnId) {
+      session.pipelineRunning = false;
+    }
   }
 }
 
 // ---------------------------------------------------------------------------
-// Phase 6: Sarvam STT WebSocket — open per session, relay PCM, handle events
+// STT WebSocket — open per session, queue early audio, handle all Sarvam events
 // ---------------------------------------------------------------------------
+
+function sendAudioToSTT(sttWs: WebSocket, audioBase64: string): void {
+  sttWs.send(JSON.stringify({ event: "audio_input", audio: audioBase64 }));
+}
 
 function openSTT(
   ws: WebSocket,
@@ -296,11 +335,23 @@ function openSTT(
   const sttWs = new WebSocket(SARVAM_STT_URL, {
     headers: { "api-subscription-key": SARVAM_API_KEY },
   });
-
   session.sttWs = sttWs;
 
   sttWs.on("open", () => {
     console.log("[STT] Connected to Sarvam Realtime STT");
+
+    // Flush any audio that arrived before the socket was ready
+    for (const msg of session.sttQueue) {
+      sttWs.send(msg);
+    }
+    session.sttQueue = [];
+
+    // Keepalive ping every 5 s (Sarvam idle timeout is ~30 s)
+    session.pingTimer = setInterval(() => {
+      if (sttWs.readyState === WebSocket.OPEN) {
+        sttWs.ping();
+      }
+    }, 5000);
   });
 
   sttWs.on("message", (data: Buffer) => {
@@ -309,42 +360,57 @@ function openSTT(
 
     console.log("[STT] Event:", JSON.stringify(event));
 
-    // Realtime API: session acknowledgement
     if (event.event === "session.begin") {
       console.log("[STT] Session begun, request_id:", event.request_id);
       return;
     }
 
-    // Realtime API: transcript events (transcript / transcript.partial / transcript.final / data)
-    if (
+    // VAD speech start — barge-in: supersede the current turn
+    if (event.event === "vad.speech_start" || event.type === "speech_start") {
+      if (session.pipelineRunning) {
+        console.log("[STT] Barge-in detected — superseding current turn");
+        session.turnId++;
+        session.turnAbort.abort();
+        session.turnAbort = new AbortController();
+        session.pipelineRunning = false;
+        send("interrupted");
+      }
+      return;
+    }
+
+    // VAD speech end — informational only; Sarvam will emit is_final transcript
+    if (event.event === "vad.speech_end" || event.type === "speech_end") {
+      return;
+    }
+
+    // Transcript events: handle both { event: "transcript", ... } and { event: "transcript.partial" / "transcript.final" }
+    const isTranscriptEvent =
       event.event === "transcript" ||
-      event.event?.startsWith("transcript") ||
-      event.type === "data"
-    ) {
-      const text: string =
-        event.transcript ?? event.text ?? event.data?.transcript ?? "";
+      event.event === "transcript.partial" ||
+      event.event === "transcript.final";
+
+    if (isTranscriptEvent) {
+      const text: string = event.transcript ?? event.text ?? "";
       const isFinal: boolean = Boolean(
-        event.is_final ||
-        event.event === "transcript.final" ||
-        event.type === "final"
+        event.is_final || event.event === "transcript.final"
       );
 
       if (!text.trim()) return;
 
       if (isFinal) {
-        // Final transcript — cancel any pending debounce and fire pipeline
-        clearTimeout(session.debounceTimer ?? undefined);
-        session.debounceTimer = null;
-        session.partialText = "";
         console.log(`[STT] Final: "${text}"`);
         send("transcript_final", { text });
-        if (!session.pipelineRunning) {
-          session.pipelineRunning = true;
-          handleQuery(ws, send, text, session).catch(console.error);
-        }
+
+        // Supersede any running turn and start the new one
+        session.turnId++;
+        session.turnAbort.abort();
+        session.turnAbort = new AbortController();
+        session.pipelineRunning = true;
+
+        const turn = session.turnId;
+        const signal = session.turnAbort.signal;
+        handleQuery(ws, send, text, session, turn, signal).catch(console.error);
       } else {
-        // Partial transcript — update UI only
-        session.partialText = text;
         console.log(`[STT] Partial: "${text}"`);
         send("transcript_partial", { text });
       }
@@ -354,12 +420,14 @@ function openSTT(
   sttWs.on("error", (err) => {
     console.error("[STT] Error:", err.message);
     send("error", { message: "STT error: " + err.message });
+    clearInterval(session.pingTimer ?? undefined);
+    session.pingTimer = null;
   });
 
   sttWs.on("close", (code, reason) => {
-    console.log(
-      `[STT] Disconnected. code=${code}, reason=${reason.toString()}`
-    );
+    console.log(`[STT] Disconnected. code=${code}, reason=${reason.toString()}`);
+    clearInterval(session.pingTimer ?? undefined);
+    session.pingTimer = null;
     session.sttWs = null;
   });
 }
@@ -386,21 +454,22 @@ wss.on("connection", (ws) => {
   };
 
   ws.on("message", (raw: Buffer, isBinary: boolean) => {
-    // Binary = raw PCM from AudioWorklet → relay to Sarvam STT
+    // Binary = raw PCM from AudioWorklet → encode and relay to Sarvam STT
     if (isBinary) {
-      session.audioBytesReceived += raw.length;
-      session.audioChunksReceived++;
-      if (session.audioChunksReceived % 20 === 0) { // Log every 20 chunks to avoid spam
-        console.log(`[Backend] Received ${session.audioChunksReceived} chunks, total bytes: ${session.audioBytesReceived}`);
+      const audioBase64 = raw.toString("base64");
+      const audioMsg = JSON.stringify({ event: "audio_input", audio: audioBase64 });
+
+      if (!session.sttWs) {
+        openSTT(ws, send, session);
       }
-      if (!session.sttWs) openSTT(ws, send, session);
+
       if (session.sttWs?.readyState === WebSocket.OPEN) {
-        // Realtime API: { event: "audio_input", audio: "<base64>" }
-        const audioBase64 = raw.toString("base64");
-        session.sttWs.send(JSON.stringify({
-          event: "audio_input",
-          audio: audioBase64,
-        }));
+        session.sttWs.send(audioMsg);
+      } else {
+        // Queue while STT socket is still connecting (bounded)
+        if (session.sttQueue.length < STT_QUEUE_MAX) {
+          session.sttQueue.push(audioMsg);
+        }
       }
       return;
     }
@@ -410,16 +479,20 @@ wss.on("connection", (ws) => {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
     if (msg.type === "query" && typeof msg.text === "string" && msg.text.trim()) {
-      if (!session.pipelineRunning) {
-        session.pipelineRunning = true;
-        handleQuery(ws, send, msg.text.trim(), session).catch(console.error);
-      }
+      session.turnId++;
+      session.turnAbort.abort();
+      session.turnAbort = new AbortController();
+      session.pipelineRunning = true;
+      const turn = session.turnId;
+      const signal = session.turnAbort.signal;
+      handleQuery(ws, send, msg.text.trim(), session, turn, signal).catch(console.error);
     }
   });
 
   ws.on("close", () => {
-    clearTimeout(session.debounceTimer ?? undefined);
+    clearInterval(session.pingTimer ?? undefined);
     session.sttWs?.close();
+    session.turnAbort.abort();
     console.log("[hotpath] Client disconnected");
   });
 
