@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { retrieveLocal as retrieve, initLocalRetriever } from "../services/rag/local_retriever.js";
 import { generateAnswerStream, FALLBACK_ANSWER, Turn } from "../services/rag/llm.js";
 import dotenv from "dotenv";
-
+import { appendFile, appendFileSync } from "fs";
 dotenv.config();
 
 const PORT = 3001;
@@ -11,7 +11,7 @@ const SARVAM_STT_URL =
   "wss://api.sarvam.ai/speech-to-text-realtime/ws" +
   "?language_code=en-IN" +
   "&model=saaras:v3-realtime" +
-  "&stream_type=fast";
+  "&stream_type=balanced";
 
 // Max number of audio messages to queue while STT socket is connecting
 const STT_QUEUE_MAX = 50;
@@ -456,6 +456,7 @@ wss.on("connection", (ws) => {
   ws.on("message", (raw: Buffer, isBinary: boolean) => {
     // Binary = raw PCM from AudioWorklet → encode and relay to Sarvam STT
     if (isBinary) {
+      appendFileSync('debug-live.pcm', raw);
       const audioBase64 = raw.toString("base64");
       const audioMsg = JSON.stringify({ event: "audio_input", audio: audioBase64 });
 
