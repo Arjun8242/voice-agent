@@ -28,6 +28,7 @@ interface Session {
   turnAbort: AbortController; // aborted when a new turn supersedes the current one
   pipelineRunning: boolean;
   history: Turn[];
+  sentenceCounter: number;
 }
 
 function newSession(): Session {
@@ -39,6 +40,7 @@ function newSession(): Session {
     turnAbort: new AbortController(),
     pipelineRunning: false,
     history: [],
+    sentenceCounter: 0,
   };
 }
 
@@ -210,7 +212,6 @@ async function handleQuery(
   // ── Step 2: Streaming Gemini LLM ─────────────────────────────────────────
   let sentenceBuffer = "";
   let geminiFirstTokenMs: number | null = null;
-  let sentenceCounter = 0;
   const firstAudioRef = { sentMs: null as number | null };
   const ttsPromises: Promise<void>[] = [];
   let assistantResponse = "";
@@ -218,7 +219,7 @@ async function handleQuery(
 
   const flushSentence = (sentence: string) => {
     if (turn !== session.turnId) return; // superseded
-    const sentenceId = sentenceCounter++;
+    const sentenceId = session.sentenceCounter++;
     const sentenceReadyMs = elapsed();
     sentenceReadyTimes.push(sentenceReadyMs);
     console.log(`[hotpath] Sentence #${sentenceId} ready at ${sentenceReadyMs}ms: "${sentence.slice(0, 60)}…"`);

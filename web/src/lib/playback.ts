@@ -7,7 +7,7 @@
 let ms: MediaSource | null = null;
 let sb: SourceBuffer | null = null;
 let audio: HTMLAudioElement | null = null;
-let expectedSentenceId = 0;
+let expectedSentenceId: number | null = 0;
 const sentenceChunks = new Map<number, ArrayBuffer[]>();
 const completedSentences = new Set<number>();
 let draining = false;
@@ -31,6 +31,10 @@ export function appendChunk(frame: ArrayBuffer): void {
   const sentenceId = view.getUint32(0, true);
   const mp3 = frame.slice(4);
 
+  if (expectedSentenceId === null) {
+    expectedSentenceId = sentenceId;
+  }
+
   if (!sentenceChunks.has(sentenceId)) {
     sentenceChunks.set(sentenceId, []);
   }
@@ -50,6 +54,7 @@ export function signalDone(): void {
 
 function drain(): void {
   if (draining || !sb || sb.updating) return;
+  if (expectedSentenceId === null) return;
 
   const chunks = sentenceChunks.get(expectedSentenceId);
   
@@ -81,7 +86,7 @@ function drain(): void {
 }
 
 export function resetPlayback(audioEl: HTMLAudioElement): void {
-  expectedSentenceId = 0;
+  expectedSentenceId = null;
   sentenceChunks.clear();
   completedSentences.clear();
   draining = false;
