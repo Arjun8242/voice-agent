@@ -71,7 +71,7 @@ async function runQuery(query: string): Promise<{
   firstAudioMs: number | null;
   ragMs: number | null;
   embedMs: number | null;
-  qdrantMs: number | null;
+  searchMs: number | null;
   ttftMs: number | null;
   firstSentenceReadyMs: number | null;
   ttsConnectionLatencyMs: number | null;
@@ -88,7 +88,7 @@ async function runQuery(query: string): Promise<{
     let firstAudioMs: number | null = null;
     let ragMs: number | null = null;
     let embedMs: number | null = null;
-    let qdrantMs: number | null = null;
+    let searchMs: number | null = null;
     let ttftMs: number | null = null;
     let firstSentenceReadyMs: number | null = null;
     let ttsConnectionLatencyMs: number | null = null;
@@ -122,7 +122,7 @@ async function runQuery(query: string): Promise<{
           if (msg.stage === "rag_complete") {
             ragMs = msg.ragLatencyMs;
             embedMs = msg.embedLatencyMs;
-            qdrantMs = msg.qdrantLatencyMs;
+            searchMs = msg.searchLatencyMs;
           }
           if (msg.stage === "gemini_first_token") ttftMs = msg.ttftMs;
           if (msg.stage === "sentence_ready" && msg.sentenceId === 0) firstSentenceReadyMs = msg.sentenceReadyMs;
@@ -134,7 +134,7 @@ async function runQuery(query: string): Promise<{
           totalMs = msg.totalMs;
           clearTimeout(timeout);
           ws.close();
-          resolve({ fullText, firstAudioMs, ragMs, embedMs, qdrantMs, ttftMs, firstSentenceReadyMs, ttsConnectionLatencyMs, ttsFirstAudioMs, browserFirstAudioMs, totalMs });
+          resolve({ fullText, firstAudioMs, ragMs, embedMs, searchMs, ttftMs, firstSentenceReadyMs, ttsConnectionLatencyMs, ttsFirstAudioMs, browserFirstAudioMs, totalMs });
           break;
         case "error":
           clearTimeout(timeout);
@@ -165,7 +165,7 @@ async function runSuite() {
 
   // Latency accumulators for summary
   const allEmbed: number[] = [];
-  const allQdrant: number[] = [];
+  const allSearch: number[] = [];
   const allTTFT: number[] = [];
   const allSentenceReady: number[] = [];
   const allTTSFirstAudio: number[] = [];
@@ -182,7 +182,7 @@ async function runSuite() {
       console.log(`Answer: ${result.fullText.trim()}`);
       console.log(`\nDetailed Latency Breakdown:`);
       console.log(`  Embedding            : ${result.embedMs ?? "N/A"} ms`);
-      console.log(`  Qdrant               : ${result.qdrantMs ?? "N/A"} ms`);
+      console.log(`  Search               : ${result.searchMs ?? "N/A"} ms`);
       console.log(`  RAG total            : ${result.ragMs ?? "N/A"} ms`);
       console.log(`  Gemini TTFT          : ${result.ttftMs ?? "N/A"} ms`);
       console.log(`  First sentence ready : ${result.firstSentenceReadyMs ?? "N/A"} ms`);
@@ -193,7 +193,7 @@ async function runSuite() {
 
       // Accumulate for averages
       if (result.embedMs !== null) allEmbed.push(result.embedMs);
-      if (result.qdrantMs !== null) allQdrant.push(result.qdrantMs);
+      if (result.searchMs !== null) allSearch.push(result.searchMs);
       if (result.ttftMs !== null) allTTFT.push(result.ttftMs);
       if (result.firstSentenceReadyMs !== null) allSentenceReady.push(result.firstSentenceReadyMs);
       if (result.ttsFirstAudioMs !== null) allTTSFirstAudio.push(result.ttsFirstAudioMs);
@@ -273,7 +273,7 @@ async function runSuite() {
   console.log("Latency Summary (averages across all tests)");
   console.log("============================================================");
   console.log(`  Embedding avg            : ${avg(allEmbed) ?? "N/A"} ms  (target <=150ms)`);
-  console.log(`  Qdrant avg               : ${avg(allQdrant) ?? "N/A"} ms`);
+  console.log(`  Search avg               : ${avg(allSearch) ?? "N/A"} ms`);
   console.log(`  Gemini TTFT avg          : ${avg(allTTFT) ?? "N/A"} ms  (target <=800ms)`);
   console.log(`  First sentence ready avg : ${avg(allSentenceReady) ?? "N/A"} ms`);
   console.log(`  TTS first audio avg      : ${avg(allTTSFirstAudio) ?? "N/A"} ms`);

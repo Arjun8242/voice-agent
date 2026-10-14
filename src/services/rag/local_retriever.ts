@@ -1,7 +1,24 @@
 import fs from "fs";
 import path from "path";
 import { pipeline } from "@huggingface/transformers";
-import type { RetrievedChunk, RetrievedContext } from "./retriever.js";
+export interface RetrievedChunk {
+  text: string;
+  score: number;
+  metadata: {
+    source?: string;
+    section?: string;
+    id?: string;
+  };
+}
+
+export interface RetrievedContext {
+  query: string;
+  chunks: RetrievedChunk[];
+  combinedContext: string;
+  latencyMs: number;
+  embedLatencyMs: number;
+  searchLatencyMs: number;
+}
  
 const MODEL = "Xenova/bge-small-en-v1.5";
 // bge models want this prefix on the QUERY only (not on the documents)
@@ -113,6 +130,6 @@ export async function retrieveLocal(query: string, topK: number = 3): Promise<Re
     combinedContext: combinedContext.trim(),
     latencyMs: r(t2 - t0),
     embedLatencyMs: r(t1 - t0),
-    qdrantLatencyMs: r(t2 - t1), // kept under this name so hotpath.ts metrics still work; it's the in-memory search time now
+    searchLatencyMs: r(t2 - t1), // kept under this name to match metrics; it's the in-memory search time now
   };
 }

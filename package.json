@@ -5,25 +5,20 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "server": "tsx src/server/hotpath.ts",
+    "server": "tsx src/server/index.ts",
     "test": "tsx scripts/index.ts",
     "test:all": "tsx scripts/index.ts",
     "test:gemini": "tsx scripts/test-gemini.ts",
     "test:sarvam-tts": "tsx scripts/test-sarvam-tts.ts",
-    "test:rag": "tsx scripts/test-rag.ts",
-    "test:n8n": "tsx scripts/test-n8n-pipeline.ts",
     "test:hotpath": "tsx scripts/test-hotpath.ts",
     "test:hotpath-suite": "tsx scripts/test-hotpath-suite.ts",
-    "test:llm": "tsx scripts/test-llm.ts",
-    "ingest": "tsx scripts/ingest.ts"
+    "test:llm": "tsx scripts/test-llm.ts"
   },
   "dependencies": {
     "@google/genai": "^0.2.0",
     "@google/generative-ai": "^0.24.0",
     "@huggingface/transformers": "^4.3.0",
-    "@qdrant/js-client-rest": "^1.13.0",
     "dotenv": "^16.4.7",
-    "ioredis": "^5.6.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

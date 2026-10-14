@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { RetrievedContext } from "./retriever.js";
+import { RetrievedContext } from "./local_retriever.js";
 
 dotenv.config();
 
@@ -9,7 +9,7 @@ if (!apiKey) {
   console.warn("GEMINI_API_KEY is not set in the environment.");
 }
 
-const genAI = new GoogleGenerativeAI(apiKey);
+const ai = new GoogleGenAI({ apiKey });
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
 export interface AnswerGenerationResult {
@@ -95,14 +95,18 @@ export async function generateAnswer(
   const userPrompt = `${historyText}Retrieved Harbor & Pine information:\n${formattedContext}\n\nCustomer question: ${query}\n\nGenerate the customer-facing answer.`;
 
   try {
-    const model = genAI.getGenerativeModel({
+    const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
-      systemInstruction: { parts: [{ text: systemInstruction }], role: "system" },
-      generationConfig: { temperature: 0.3, maxOutputTokens: 150 },
+      contents: userPrompt,
+      config: {
+        systemInstruction,
+        temperature: 0.3,
+        maxOutputTokens: 150,
+        thinkingConfig: { includeThoughts: false },
+      },
     });
 
-    const response = await model.generateContent(userPrompt);
-    const answer = response.response.text().trim();
+    const answer = (response.text ?? "").trim();
 
     if (!answer) {
       return { answer: FALLBACK_ANSWER, query, retrievedChunks };
@@ -117,8 +121,8 @@ export async function generateAnswer(
 
 // -----------------------------------------------------------------------
 // Streaming: generateAnswerStream
-// Returns the raw stream from Gemini so hotpath.ts can forward tokens
-// incrementally to the sentence buffer → TTS → browser.
+// Returns { stream } where each chunk has a .text() method, so that
+// hotpath.ts (which calls chunk.text()) continues to work unchanged.
 // -----------------------------------------------------------------------
 export async function generateAnswerStream(
   query: string,
@@ -131,12 +135,23 @@ export async function generateAnswerStream(
 
   const userPrompt = `${historyText}Retrieved Harbor & Pine information:\n${formattedContext}\n\nCustomer question: ${query}\n\nGenerate the customer-facing answer.`;
 
-  const model = genAI.getGenerativeModel({
+  const rawStream = await ai.models.generateContentStream({
     model: GEMINI_MODEL,
-    systemInstruction: { parts: [{ text: systemInstruction }], role: "system" },
-    generationConfig: { temperature: 0.3, maxOutputTokens: 150 },
+    contents: userPrompt,
+    config: {
+      systemInstruction,
+      temperature: 0.3,
+      maxOutputTokens: 150,
+    },
   });
 
-  // Returns StreamGenerateContentResult — caller iterates result.stream
-  return model.generateContentStream(userPrompt);
+  // Wrap into the same shape hotpath.ts expects: { stream: AsyncIterable<{ text(): string }> }
+  async function* adaptedStream() {
+    for await (const chunk of rawStream) {
+      const textValue = chunk.text ?? "";
+      yield { text: () => textValue };
+    }
+  }
+
+  return { stream: adaptedStream() };
 }

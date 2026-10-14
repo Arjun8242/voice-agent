@@ -18,16 +18,6 @@ const tests: TestOption[] = [
     script: "scripts/test-sarvam-tts.ts",
     description: "Tests Sarvam TTS REST and streaming audio generation.",
   },
-  {
-    name: "RAG Ingestion & Retrieval (Phase 3)",
-    script: "scripts/test-rag.ts",
-    description: "Indexes knowledge into Qdrant and tests retrieval latency.",
-  },
-  {
-    name: "n8n Pipeline Evaluation (Phase 4)",
-    script: "scripts/test-n8n-pipeline.ts",
-    description: "Assesses n8n workflow orchestration and streaming viability.",
-  },
 ];
 
 async function runScript(scriptPath: string): Promise<void> {
