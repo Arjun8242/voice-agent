@@ -19,6 +19,7 @@
 
   let ws: WebSocket | null = null;
   let audioEl: HTMLAudioElement;
+  let micActive = $state(false);
 
   const WS_URL = 'ws://localhost:3001';
 
@@ -29,7 +30,11 @@
 
     ws.onopen = () => { errorMsg = ''; };
     ws.onerror = () => { errorMsg = 'WebSocket error — is the server running on :3001?'; };
-    ws.onclose = () => { if (status !== 'idle') status = 'idle'; };
+    ws.onclose = () => {
+      stopMic();
+      micActive = false;
+      status = 'idle';
+    };
 
     ws.onmessage = (ev) => {
       // Binary = MP3 audio frame [u32LE sentenceId][mp3 bytes]
@@ -49,6 +54,8 @@
         case 'transcript_final':
           finalText = msg.text;
           partialText = '';
+          assistantText = "";
+          resetPlayback(audioEl);
           status = 'thinking';
           break;
 
@@ -71,19 +78,20 @@
         case 'done':
           metrics.totalMs = msg.totalMs;
           signalDone();
-          // Return to listening — microphone stays active for next user turn
-          status = 'listening';
+          // Only return to listening if the mic is still on.
+          status = micActive ? 'listening' : 'idle';
           break;
 
         case 'interrupted':
           // Server superseded current turn due to barge-in
           resetPlayback(audioEl);
           assistantText = '';
-          status = 'listening';
+          status = micActive ? 'listening' : 'idle';
           break;
 
         case 'error':
           errorMsg = msg.message;
+          micActive = false;
           stopMic();
           status = 'idle';
           break;
@@ -93,8 +101,9 @@
 
   // ── Mic toggle ───────────────────────────────────────────────────────────
   async function toggleMic() {
-    if (status !== 'idle') {
+    if (micActive) {
       stopMic();
+      micActive = false;
       status = 'idle';
       return;
     }
@@ -107,6 +116,7 @@
     metrics = {};
     resetPlayback(audioEl);
 
+    micActive = true;
     try {
       status = 'listening';
       await startMic((pcm: ArrayBuffer) => {
@@ -114,7 +124,11 @@
           ws.send(pcm);
         }
       });
+      // Stopped while the permission prompt / worklet was still loading.
+      if (!micActive) stopMic();
     } catch (e: any) {
+      if (!micActive) return;
+      micActive = false;
       errorMsg = e.message || 'Mic access denied';
       status = 'idle';
     }
@@ -186,9 +200,9 @@
         ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30'
         : 'bg-[hsl(199,89%,48%)] hover:bg-[hsl(199,89%,42%)] shadow-[hsl(199,89%,48%)]/30'
       }"
-    aria-label={status === 'listening' ? 'Stop listening' : 'Start listening'}
+    aria-label={micActive ? 'Stop listening' : 'Start listening'}
   >
-    {#if status === 'listening'}
+    {#if micActive}
       <MicOff size={32} class="text-white" />
     {:else}
       <Mic size={32} class="text-white" />

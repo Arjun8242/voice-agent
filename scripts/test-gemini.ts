@@ -1,10 +1,10 @@
 import dotenv from "dotenv";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
 const apiKey = process.env.GEMINI_API_KEY;
-const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const modelName = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
 if (!apiKey) {
   console.error("❌ Error: GEMINI_API_KEY not found in environment.");
@@ -18,14 +18,7 @@ async function testGeminiStreaming() {
   console.log(`Model: ${modelName}`);
   console.log(`Prompt: "What is your pricing model? Explain in 2 concise sentences."\n`);
 
-  const genAI = new GoogleGenerativeAI(apiKey!);
-  const model = genAI.getGenerativeModel({
-    model: modelName!,
-    generationConfig: {
-      maxOutputTokens: 150,
-      temperature: 0.3,
-    },
-  });
+  const ai = new GoogleGenAI({ apiKey });
 
   const prompt = "What is your pricing model? Explain in 2 concise sentences.";
   
@@ -37,9 +30,16 @@ async function testGeminiStreaming() {
   console.log("⏳ Sending streaming request to Gemini...");
 
   try {
-    const result = await model.generateContentStream(prompt);
+    const responseStream = await ai.models.generateContentStream({
+      model: modelName!,
+      contents: prompt,
+      config: {
+        maxOutputTokens: 150,
+        temperature: 0.3,
+      },
+    });
     
-    for await (const chunk of result.stream) {
+    for await (const chunk of responseStream) {
       const now = performance.now();
       if (firstChunkTime === null) {
         firstChunkTime = now;
@@ -47,7 +47,7 @@ async function testGeminiStreaming() {
         console.log(`\n🚀 [TTFT] First token received in ${ttft} ms\n--- Streamed Content ---`);
       }
       chunkCount++;
-      const text = chunk.text();
+      const text = chunk.text ?? "";
       process.stdout.write(text);
       fullResponse += text;
     }

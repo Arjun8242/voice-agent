@@ -24,6 +24,15 @@ const MODEL = "Xenova/bge-small-en-v1.5";
 // bge models want this prefix on the QUERY only (not on the documents)
 const QUERY_PREFIX = "Represent this sentence for searching relevant passages: ";
 const MAX_CHAR_CAP = 3000; // same ~1000-token cap as retriever.ts
+// Minimum cosine similarity for a chunk to be considered relevant. With
+// bge-small-en-v1.5, real matches score ~0.55+ while unrelated text lands
+// around 0.4-0.5, so this filters clearly off-topic queries before the LLM.
+const DEFAULT_MIN_SCORE = 0.5;
+const envMinScore = Number(process.env.RAG_MIN_SCORE);
+const MIN_SCORE =
+  Number.isFinite(envMinScore) && envMinScore > 0 && envMinScore < 1
+    ? envMinScore
+    : DEFAULT_MIN_SCORE;
  
 interface Item {
   id: string;
@@ -108,6 +117,7 @@ export async function retrieveLocal(query: string, topK: number = 3): Promise<Re
       return { it, s };
     })
     .sort((a, b) => b.s - a.s)
+    .filter(({ s }) => s >= MIN_SCORE)
     .slice(0, topK);
   const t2 = performance.now();
  

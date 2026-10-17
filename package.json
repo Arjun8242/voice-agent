@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@google/genai": "^0.2.0",
-    "@google/generative-ai": "^0.24.0",
     "@huggingface/transformers": "^4.3.0",
     "dotenv": "^16.4.7",
     "ws": "^8.18.0"

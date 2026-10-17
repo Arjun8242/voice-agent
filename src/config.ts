@@ -8,7 +8,7 @@ export const SARVAM_STT_URL =
     "wss://api.sarvam.ai/speech-to-text-realtime/ws" +
     "?language_code=en-IN" +
     "&model=saaras:v3-realtime" +
-    "&stream_type=balanced";
+    "&stream_type=fast";
 
 export const STT_QUEUE_MAX = 50;
 
