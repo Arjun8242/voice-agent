@@ -5,14 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "server": "tsx src/server/index.ts",
-    "test": "tsx scripts/index.ts",
-    "test:all": "tsx scripts/index.ts",
-    "test:gemini": "tsx scripts/test-gemini.ts",
-    "test:sarvam-tts": "tsx scripts/test-sarvam-tts.ts",
-    "test:hotpath": "tsx scripts/test-hotpath.ts",
-    "test:hotpath-suite": "tsx scripts/test-hotpath-suite.ts",
-    "test:llm": "tsx scripts/test-llm.ts"
+
   },
   "dependencies": {
     "@google/genai": "^0.2.0",

@@ -16,3 +16,15 @@ sarvam_test_output.wav
 # OS files
 .DS_Store
 Thumbs.db
+thrash/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
