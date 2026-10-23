@@ -1,6 +1,4 @@
-"""local_retriever.py: Local embedding-based retrieval using sentence-transformers.
-
-Corresponds to src/services/rag/local_retriever.ts.
+"""retriever.py: Embedding-based retrieval using sentence-transformers.
 """
 import json
 import os
@@ -11,7 +9,6 @@ from sentence_transformers import SentenceTransformer
 
 MODEL = "BAAI/bge-small-en-v1.5"
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
-MAX_CHAR_CAP = 3000
 CACHE_MAX = 200
 
 DEFAULT_MIN_SCORE = 0.5
@@ -46,6 +43,7 @@ def _embed_query_sync(query: str) -> list[float]:
 
 def _find_chunks_file() -> Path:
     candidates = [
+        Path(__file__).resolve().parents[2] / "data" / "KB_chunks" / "harbor_pine_chunks.json",
         Path(__file__).resolve().parents[3] / "data" / "KB_chunks" / "harbor_pine_chunks.json",
         Path("data") / "KB_chunks" / "harbor_pine_chunks.json",
         Path("../data") / "KB_chunks" / "harbor_pine_chunks.json",
@@ -89,15 +87,21 @@ async def init_retriever(
     print(f"[retriever] ready: {len(_items)} chunks, {elapsed} ms")
 
 
-async def retrieve(query: str, top_k: int = 3) -> dict:
+async def retrieve(
+    query: str,
+    top_k: int = 3,
+    topic: str | None = None,
+) -> dict:
     """Return top matching chunks for query. Raises if init_retriever not called."""
     import asyncio
 
     if _model is None:
         raise RuntimeError("Call init_retriever() before retrieve()")
 
+    search_query = f"[{topic}] {query}" if topic else query
+
     t0 = time.perf_counter()
-    q = await asyncio.to_thread(_embed_query_sync, query)
+    q = await asyncio.to_thread(_embed_query_sync, search_query)
     t1 = time.perf_counter()
 
     # vectors are normalized — dot product == cosine similarity
@@ -113,8 +117,6 @@ async def retrieve(query: str, top_k: int = 3) -> dict:
     chunks = []
     combined = ""
     for it, s in scored:
-        if len(combined) + len(it["text"]) > MAX_CHAR_CAP:
-            continue
         chunks.append({
             "text": it["text"],
             "score": s,

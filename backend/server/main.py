@@ -8,10 +8,10 @@ from fastapi import FastAPI, WebSocket
 
 try:
     from server.connection import handle_connection
-    from services.rag.local_retriever import init_retriever
+    from rag.retriever import init_retriever
 except (ImportError, ModuleNotFoundError):
     from backend.server.connection import handle_connection
-    from backend.services.rag.local_retriever import init_retriever
+    from backend.rag.retriever import init_retriever
 
 
 @asynccontextmanager
@@ -22,6 +22,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+
+@app.get("/health")
+async def health_check() -> dict:
+    return {"status": "ok"}
 
 
 @app.websocket("/")

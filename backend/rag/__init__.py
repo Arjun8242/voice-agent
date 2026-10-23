@@ -1,5 +1,5 @@
-"""RAG services package."""
-from .local_retriever import init_retriever, retrieve
+"""RAG package."""
+from .retriever import init_retriever, retrieve
 from .llm import (
     FALLBACK_ANSWER,
     stream_answer,

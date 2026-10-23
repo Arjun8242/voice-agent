@@ -10,13 +10,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 try:
-    from services.rag.llm import FALLBACK_ANSWER, stream_answer
-    from services.rag.local_retriever import retrieve
+    from rag.llm import FALLBACK_ANSWER, stream_answer
+    from rag.retriever import retrieve
     from pipeline.sentence import extract_next_sentence
     from providers.tts import stream_tts
 except (ImportError, ModuleNotFoundError):
-    from backend.services.rag.llm import FALLBACK_ANSWER, stream_answer
-    from backend.services.rag.local_retriever import retrieve
+    from backend.rag.llm import FALLBACK_ANSWER, stream_answer
+    from backend.rag.retriever import retrieve
     from backend.pipeline.sentence import extract_next_sentence
     from backend.providers.tts import stream_tts
 
@@ -89,7 +89,7 @@ async def answer_turn(
     try:
         async with asyncio.TaskGroup() as tg:
             try:
-                rag = await retrieve(query, 3)
+                rag = await retrieve(query, top_k=3)
 
                 await send("metric", {
                     "stage": "rag_complete",
