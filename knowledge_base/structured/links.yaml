@@ -1,0 +1,35 @@
+- id: portfolio
+  label: Personal Portfolio
+  type: portfolio
+  url: "https://www.arjunbuilds.me/"
+  description: "Personal portfolio website with projects and professional information."
+
+- id: resume
+  label: Resume
+  type: resume
+  url: "https://drive.google.com/file/d/1srfuPZl-Fg8Zp4A8G4efwNDdkdpZguWZ/view?usp=drive_link"
+  description: "Downloadable resume with education, skills, projects, and experience."
+
+- id: github
+  label: GitHub Profile
+  type: github_profile
+  url: "https://github.com/Arjun8242"
+  description: "Source code and repositories for my software projects."
+
+- id: linkedin
+  label: LinkedIn Profile
+  type: professional_profile
+  url: "https://www.linkedin.com/in/arjun-jaiswal-6786ba282/"
+  description: "Professional profile and career information."
+
+- id: leetcode
+  label: LeetCode Profile
+  type: coding_profile
+  url: "https://leetcode.com/u/arjun8242/"
+  description: "Coding practice and problem-solving profile."
+
+- id: x
+  label: X
+  type: professional_profile
+  url: "https://x.com/Arjun62727916"
+  description: "X profile"

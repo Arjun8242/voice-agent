@@ -1,9 +1,9 @@
 """answer_turn.py: Orchestrates RAG retrieval → LLM streaming → TTS per turn.
 
-Corresponds to src/pipeline/answerTurn.ts.
 """
 
 import asyncio
+import httpx
 import struct
 import time
 from collections.abc import Awaitable, Callable
@@ -31,6 +31,7 @@ async def speak_sentence(
     first_audio: dict,
     elapsed: Callable[[], int],
     on_audio: Callable[[], None],
+    tts_client: httpx.AsyncClient,
 ) -> None:
     """TTS one sentence. Always fires tts_end in finally."""
     id_buf = struct.pack("<I", sentence_id)
@@ -45,7 +46,7 @@ async def speak_sentence(
                 produced_first = True
                 on_audio()
 
-        await stream_tts(text, interrupt_event, on_chunk)
+        await stream_tts(text, interrupt_event, on_chunk, tts_client)
 
     except asyncio.CancelledError:
         raise
@@ -65,6 +66,7 @@ async def answer_turn(
     state: Any,
     send: Send,
     interrupt_event: asyncio.Event,
+    tts_client: httpx.AsyncClient,
 ) -> None:
     """RAG → LLM stream → TTS. Cancellable via task cancellation or interrupt_event."""
 
@@ -84,6 +86,7 @@ async def answer_turn(
             send, sid, sentence, interrupt_event,
             first_audio, elapsed,
             lambda: setattr(state, "agent_speaking", True),
+            tts_client,
         ))
 
     try:

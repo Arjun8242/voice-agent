@@ -1,0 +1,56 @@
+- id: beacon
+  name: Beacon
+  one_line: Beacon is a distributed uptime monitoring platform that checks website and API availability, tracks response times, and sends email alerts when services go down or recover. It uses a Redis + BullMQ queue-driven scheduler-worker architecture with a transactional outbox pattern to ensure reliable, duplicate-safe job scheduling.
+  status: shipped
+  featured: true
+  tech: [TypeScript, Next.js, Express, PostgreSQL, Prisma, Redis, BullMQ, Turborepo, Resend]
+  role: Designed and built it. 
+  links: {repo: https://github.com/Arjun8242/Beacon, live: https://beacon-sigma-henna.vercel.app/, video: null}
+  assets: {architecture_image: null}
+  highlights:
+    - Scheduler, Redis queue and worker pool are separate stages, so slow target sites do not block the API
+    - Two scheduler replicas do not double-schedule checks (row claiming with FOR UPDATE SKIP LOCKED plus a transactional outbox)
+    - Incidents are tracked from open to resolved, with deduplicated email alerts
+    - Worker concurrency is configurable per instance (default 5)
+  measured:
+    - claim: With two scheduler instances and 3 due monitors, the naive query enqueued 6 jobs and the fixed version enqueued 3
+      how: Ran both instances at once and compared enqueued job counts
+  updated: 2026-10-22
+
+
+- id: fitai
+  name: FitAI
+  one_line: FitAI is a full-stack fitness platform that integrates Google Gemini for fitness performance analysis, workout plan adjustment suggestions, and AI coaching, alongside workout logging and progress analytics.
+  status: shipped
+  featured: false
+  tech: [JavaScript, React 19, Vite, Node.js, Express 5, MongoDB, Mongoose, Google Gemini API, JWT, Docker Compose, Resend]
+  role: Designed and built it.
+  links: {repo: https://github.com/Arjun8242/FitAI, live: https://performance-tracker-zeta.vercel.app/, video: null}
+  assets: {architecture_image: null}
+  highlights:
+    - AI-powered fitness analysis and workout plan adjustment suggestions using Google Gemini
+    - Persistent AI coach chat history and structured user context for personalized responses
+    - Workout planning and logging with progress dashboards, streaks, and exercise analytics
+    - JWT-based authentication, role-based access control, Joi validation, rate limiting, and security middleware
+    - Docker Compose setup for running the backend and MongoDB
+  updated: 2026-03-22
+
+- id: valyrian
+  name: Valyrian
+  one_line: Valyrian is a tree-walking interpreted programming language built from scratch in Java, featuring recursive-descent parsing, AST evaluation, lexical scoping, closures, recursion, arrays, and structured runtime error handling.
+  status: runnable_not_deployed
+  featured: false
+  tech: [Java, Gradle, Recursive Descent Parsing, Abstract Syntax Tree, Visitor Pattern]
+  role: Designed and built it from scratch.
+  links: {repo: https://github.com/Arjun8242/Valyrian, live: null, video: null}
+  assets: {architecture_image: null}
+  highlights:
+    - Built a complete interpreter pipeline from lexical analysis to parsing and AST evaluation
+    - Implemented recursive-descent parsing with operator precedence, panic-mode error recovery, and for-loop desugaring
+    - Implemented lexical environment chains, variable shadowing, first-class functions, closures, and recursion
+    - Added arrays, indexing, element assignment, short-circuit logical evaluation, and structured runtime error reporting with exit codes
+    - Created a test suite of 17 scripts covering language features, scope isolation, control flow, and error handling
+  updated: 2026-07-22
+
+
+- id: voice-agent

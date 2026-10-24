@@ -42,6 +42,16 @@ def _get_client() -> genai.Client:
 
     return _client
 
+async def warm_llm() -> None:
+    try:
+        await _get_client().aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents="Hi",
+            config=types.GenerateContentConfig(max_output_tokens=5),
+        )
+    except Exception as err:
+        print(f"[llm] warm-up failed: {err}")
+
 
 def build_system_instruction() -> str:
     return (

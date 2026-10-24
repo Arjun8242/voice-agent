@@ -1,10 +1,10 @@
 """connection.py: Per-connection handler — wires barge-in, STT, and answer turns.
 
-Corresponds to src/server/connection.ts.
 """
 
 import asyncio
 from fastapi import WebSocket
+import httpx
 
 try:
     from pipeline.answer_turn import answer_turn
@@ -19,6 +19,8 @@ try:
         start_turn,
     )
     from providers.stt import create_stt
+
+
 except (ImportError, ModuleNotFoundError):
     from backend.pipeline.answer_turn import answer_turn
     from backend.pipeline.barge_in import BargeIn
@@ -34,7 +36,7 @@ except (ImportError, ModuleNotFoundError):
     from backend.providers.stt import create_stt
 
 
-async def handle_connection(ws: WebSocket) -> None:
+async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient) -> None:
     """Handle one WebSocket connection from accept() to disconnect."""
     await ws.accept()
     print("[server] Client connected")
@@ -77,7 +79,7 @@ async def handle_connection(ws: WebSocket) -> None:
         ev: asyncio.Event,
     ) -> None:
         try:
-            await answer_turn(text, conv, send, ev)
+            await answer_turn(text, conv, send, ev, tts_client)
         except asyncio.CancelledError:
             pass
         except Exception as err:

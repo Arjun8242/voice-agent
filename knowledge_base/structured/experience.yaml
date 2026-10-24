@@ -1,0 +1,54 @@
+- id: experience
+  organization: LifeLinkr
+  role: Backend Developer Intern
+  type: internship
+
+  start_date: "2025-11"
+  end_date: "2026-02"
+  current: false
+
+  location: "New Delhi, India"
+
+  tech:
+    - React.js
+    - Express.js
+    - MySQL
+    - Tailwind CSS
+
+  one_line: >
+    Worked as a Backend Developer Intern at LifeLinkr, improving
+    clinical reporting APIs through SQL query optimization, indexing,
+    server-side pagination, dynamic filtering, sorting, and debugging
+    data relationships across patient registration, IVF, and reporting workflows.
+
+  highlights:
+    - id: report-pagination-filtering
+      description: >
+        Implemented server-side pagination, filtering, and sorting
+        across 10+ KPI reports, aggregating data from up to 5 related
+        MySQL tables per KPI.
+
+    - id: clinical-report-filters
+      description: >
+        Enhanced clinical reporting with 10+ dynamic filters across
+        36 report attributes, enabling flexible retrieval and analysis
+        of patient data.
+
+    - id: report-api-optimization
+      description: >
+        Reduced report API response time by 75%, from 6 seconds
+        to 1.5 seconds, by optimizing SQL queries and implementing
+        targeted indexing strategies.
+      measured:
+        before_seconds: 6
+        after_seconds: 1.5
+        improvement_percent: 75
+
+    - id: patient-data-relationship-debugging
+      description: >
+        Debugged a patient-registration to IVF to reporting workflow
+        spanning 2–3 MySQL tables, identified an incorrect foreign-key
+        relationship, and corrected data retrieval through proper
+        references and JOINs.
+
+  updated: "2026-10-22"
