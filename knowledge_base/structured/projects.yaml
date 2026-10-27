@@ -51,6 +51,3 @@
     - Added arrays, indexing, element assignment, short-circuit logical evaluation, and structured runtime error reporting with exit codes
     - Created a test suite of 17 scripts covering language features, scope isolation, control flow, and error handling
   updated: 2026-07-22
-
-
-- id: voice-agent

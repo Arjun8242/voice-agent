@@ -188,7 +188,7 @@ The repository documents 17 `.val` test scripts covering areas such as:
 - Short-circuit logical evaluation.
 - Runtime errors, syntax errors, undefined-variable assignment, and early return behaviour.
 
-These are runnable language-behaviour scripts. Do not describe them as a particular unit-testing framework or claim a coverage percentage unless separately measured.
+These are only a runnable language-behaviour scripts not a particular unit-testing framework.
 
 ## Design Decisions and Trade-offs
 

@@ -27,7 +27,7 @@ meeting_types:
     description: Discuss projects and technical experience
 
 availability:
-  working_days: [Monday, Tuesday, Wednesday, Thursday, Friday]       
+  working_days: [mon, tue, wed, thu, fri]       
   start_time: "10:00"   
   end_time: "17:00" 
   booking_horizon_days: 14

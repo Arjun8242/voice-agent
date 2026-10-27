@@ -12,6 +12,7 @@ node_modules/
 *.wav
 *.mp3
 sarvam_test_output.wav
+kb_index.json
 
 
 

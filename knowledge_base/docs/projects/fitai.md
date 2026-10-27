@@ -90,6 +90,22 @@ The schema also models plan exercises and performed exercises as embedded collec
 
 These controls do not imply that the application is immune to security issues; claims should be limited to the protections present in the code and active configuration.
 
+## Scope and Limitations
+
+- **Scope:** FitAI is built for strength-training workflows: one workout plan per user, with sets logged as weight × reps. Cardio, duration-based and bodyweight-specific tracking are not supported.
+- **Logging rules:** Workouts can only be logged for today or yesterday, and only on the planned day. Day boundaries are calculated in UTC, so streaks and dates can be off for users in other timezones.
+- **AI features are advisory:** Analysis, plan adjustments and chat use Gemini 2.5 Flash on a recent data window (about 30 days). Suggestions are never applied automatically, and output quality is not yet measured by a formal evaluation suite.
+- **Auth:** Sessions use a 30-minute JWT with no refresh token and no password-reset flow. OTP attempts are rate-limited per IP, not per account.
+- **Engineering:** There are no automated tests yet. Rate limits and the AI analysis cache are in-memory or per-user in the database, which limits horizontal scaling, and the stored nutrition profile is not yet used by analytics or AI prompts.
+
+## Future Work
+
+- **AI evaluation and grounding:** Add an evaluation harness (schema validity, plan-change constraints, no invented metrics), use Gemini structured outputs, and replace the regex intent router with tool calling over the user's own data.
+- **Knowledge-grounded coaching:** Add retrieval over an evidence-based fitness knowledge base with citations and injury/medical safety guardrails.
+- **Deterministic progression engine:** Build rule-based progressive overload and deload recommendations, with the LLM used only to explain them.
+- **Product depth:** Add per-user timezones, log editing and backfill, multiple plans and templates, RPE/RIR tracking, cardio exercises and nutrition tracking.
+- **Reliability and security:** Add unit, integration and end-to-end tests with a real CI gate, Redis-backed rate limiting and caching, refresh tokens with password reset, and prompt/latency/cost observability.
+
 
 ## Project Links
 
