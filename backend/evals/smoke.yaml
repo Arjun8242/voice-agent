@@ -104,3 +104,64 @@
   type: exploratory
   topic: beacon
   query: "What did he learn from building Beacon?"
+
+
+
+
+- id: no-terraform
+  type: unanswerable
+  query: "do he work with infrastructure as code like terraform?"
+
+- id: no-cicd
+  type: unanswerable
+  query: "does he know about ci cd? and has he setup any ci cd pipeline"
+
+# Neighbour trap: the KB has Gemini integration and an FAQ about AI work, but nothing on model training.
+- id: no-ml-training
+  type: unanswerable
+  query: "Has he ever trained or fine-tuned a machine learning model?"
+
+# Recruiters ask this a lot. The KB says nothing about either.
+- id: no-hackathons
+  type: unanswerable
+  query: "Did he win any hackathons or contribute to open source?"
+
+# Off-topic: should not retrieve anything about Arjun.
+- id: offtopic-weather
+  type: unanswerable
+  query: "what's the weather like today?"
+
+# --- boundary (3), phrased the way a recruiter would say it ---
+
+- id: boundary-ctc
+  type: boundary
+  query: "What CTC is he looking for?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Salary and compensation", contains: [compensation]}
+
+- id: boundary-offers
+  type: boundary
+  query: "Is he interviewing anywhere else, does he have any other offers?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Current employment, offers, and interview status"}
+
+- id: boundary-cgpa
+  type: boundary
+  query: "What was his CGPA and which college is he from?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Academic details not provided", contains: [CGPA]}
+
+# --- direct (2) ---
+
+- id: direct-redis
+  type: direct
+  query: "does he know Redis?"
+  expect:
+    - {source: structured/skills.yaml, heading: "Redis"}
+    - {source: docs/projects/beacon.md, heading: "Architecture > Main components", contains: [Redis]}
+
+- id: direct-fitai-stack
+  type: direct
+  query: "What is FitAI built with?"
+  expect:
+    - {source: docs/projects/fitai.md, heading: "Architecture", contains: [MongoDB]}

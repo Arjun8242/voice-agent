@@ -22,7 +22,7 @@ QUERY_PREFIX = (
 MODEL_DIM = 384
 CACHE_MAX = 200
 
-DEFAULT_MIN_SCORE = 0.5
+DEFAULT_MIN_SCORE = 0.65
 _env_min = float(os.environ.get("RAG_MIN_SCORE", "0"))
 MIN_SCORE = (
     _env_min if 0 < _env_min < 1 else DEFAULT_MIN_SCORE
@@ -219,7 +219,9 @@ async def init_retriever(
             "title": chunk["title"],
             "text": chunk["content"],
             "source": chunk.get("source"),
+            "project": chunk.get("project"),
             "vec": vector,
+
         }
         for chunk, vector in zip(chunks, vectors)
     ]
@@ -263,6 +265,11 @@ async def retrieve(
     scored = []
 
     for item in _items:
+
+        if topic and item.get("project") and item["project"].lower() != topic.lower():
+            continue
+
+
         score = sum(
             a * b for a, b in zip(query_vector, item["vec"])
         )
@@ -290,6 +297,7 @@ async def retrieve(
                     "source": item["source"],
                     "section": item["title"],
                     "id": item["id"],
+                    "project": item["project"],
                 },
             }
         )
@@ -301,9 +309,12 @@ async def retrieve(
 
     to_ms = lambda seconds: round(seconds * 1000, 2)
 
+    status = "ok" if result_chunks else "none_relevant"
+
     return {
         "query": query,
         "chunks": result_chunks,
+        "status": status,
         "combinedContext": combined_context.strip(),
         "latencyMs": to_ms(searched_at - started),
         "embedLatencyMs": to_ms(embedded_at - started),

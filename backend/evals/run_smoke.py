@@ -163,7 +163,19 @@ def sweep(questions: list[dict], results: dict[str, list[dict]]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-async def run(questions: list[dict], index: Path, k: int) -> tuple[dict[str, list[dict]], float]:
+async def run(questions: list[dict], index: Path, k: int) -> tuple[dict[str, list[dict]], dict[str, str], float]:
+    from backend.rag import retriever  # heavy import, kept out of module scope
+    configured = retriever.MIN_SCORE
+    await retriever.init_retriever(str(index))
+    retriever.MIN_SCORE = 0.0  # see raw scores; thresholds are applied by this runner
+    results = {}
+    statuses = {}
+    for q in questions:
+        out = await retriever.retrieve(q["query"], top_k=k, topic=q.get("topic"))
+        results[q["id"]] = out["chunks"]
+        statuses[q["id"]] = out["status"]
+    retriever.MIN_SCORE = configured
+    return results, statuses, configured
     from backend.rag import retriever  # heavy import, kept out of module scope
 
     configured = retriever.MIN_SCORE
@@ -174,21 +186,23 @@ async def run(questions: list[dict], index: Path, k: int) -> tuple[dict[str, lis
         out = await retriever.retrieve(q["query"], top_k=k, topic=q.get("topic"))
         results[q["id"]] = out["chunks"]
     retriever.MIN_SCORE = configured
-    return results, configured
+    return results, statuses, configured
 
 
-def print_report(questions, results, threshold, k) -> int:
+def print_report(questions, results, statuses, threshold, k) -> int:
     print(f"\nSmoke set: {len(questions)} questions, top_k={k}, threshold={threshold}\n")
     failed = counted = 0
     for q in questions:
         r = evaluate(q, results[q["id"]], threshold)
+        status = statuses[q["id"]]
         if r["passed"] is None:
             mark = "INFO"
         else:
             counted += 1
             mark = "PASS" if r["passed"] else "FAIL"
             failed += not r["passed"]
-        print(f"{mark}  {q['id']:<28} {q['type']:<12} top={r['score']:.3f}  {r['note']}")
+
+        print(f"{mark}  {q['id']:<28} {q['type']:<12} top={r['score']:.3f}  [{status}] {r['note']}")
         if r["passed"] is None or r["passed"] is False:
             for c in results[q["id"]][:3]:
                 m = c["metadata"]
@@ -232,8 +246,8 @@ def main(argv: list[str] | None = None) -> int:
         print("Fix these before running:\n  " + "\n  ".join(problems), file=sys.stderr)
         return 2
 
-    results, threshold = asyncio.run(run(questions, args.index, args.k))
-    return print_report(questions, results, threshold, args.k)
+    results, statuses, threshold = asyncio.run(run(questions, args.index, args.k))
+    return print_report(questions, results, statuses, threshold, args.k)
 
 
 if __name__ == "__main__":
