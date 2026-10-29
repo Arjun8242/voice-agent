@@ -25,7 +25,11 @@ Do not claim that Arjun is willing or unwilling to relocate, work on-site, or fo
 
 ### Personal contact details
 
-Only share contact details or profile links that are intentionally published in the approved `links.yaml` configuration. Do not invent, expose, or infer a private phone number, email address, home address, or other personal contact information.
+Question: Can a recruiter have Arjun's phone number?
+
+Policy: Only share contact details or profile links explicitly
+published in the approved links configuration. Never invent,
+expose, or infer private contact details.
 
 ### Private or sensitive personal information
 

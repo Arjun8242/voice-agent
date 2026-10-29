@@ -219,7 +219,8 @@ async def init_retriever(
             "title": chunk["title"],
             "text": chunk["content"],
             "source": chunk.get("source"),
-            "project": chunk.get("project"),
+            "project": chunk.get("project_id"),
+            "status": chunk.get("status"),
             "vec": vector,
 
         }
@@ -240,7 +241,7 @@ async def init_retriever(
 
 async def retrieve(
     query: str,
-    top_k: int = 3,
+    top_k: int = 4,
     topic: str | None = None,
 ) -> dict:
     """Return the highest-scoring chunks for a query."""
@@ -298,6 +299,7 @@ async def retrieve(
                     "section": item["title"],
                     "id": item["id"],
                     "project": item["project"],
+                    "status": item["status"],
                 },
             }
         )
@@ -320,3 +322,12 @@ async def retrieve(
         "embedLatencyMs": to_ms(embedded_at - started),
         "searchLatencyMs": to_ms(searched_at - embedded_at),
     }
+
+def project_aliases() -> dict[str, str]:
+    """Spoken project name -> project id, built from the loaded index."""
+    aliases: dict[str, str] = {}
+    for item in _items:
+        if item["project"]:
+            aliases[item["project"].lower()] = item["project"]
+            aliases[item["title"].split(" > ")[0].strip().lower()] = item["project"]
+    return aliases

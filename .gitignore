@@ -5,6 +5,8 @@ node_modules/
 .env
 
 # Documentation
+phase0-audit.md
+knowledge_base/docs/decisions/phase0-audit.md
 
 
 # Logs & output files

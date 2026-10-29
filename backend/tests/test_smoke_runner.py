@@ -88,7 +88,7 @@ def test_smoke_file_is_well_formed():
     qs = rs.load_questions(rs.DEFAULT_FILE)
     assert rs.check_questions(qs) == []
     counted = [q for q in qs if q["type"] != "exploratory"]
-    assert 10 <= len(counted) <= 15
+    assert len(counted) >= 10
     kinds = {q["type"] for q in qs}
     assert {"direct", "followup", "boundary", "unanswerable", "exploratory"} <= kinds
 

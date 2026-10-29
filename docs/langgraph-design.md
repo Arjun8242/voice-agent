@@ -345,31 +345,18 @@ voice-agent/
   apps/web/        SvelteKit client
   backend/         Python backend
     pyproject.toml
-    app/
-      # folders marked existing are as listed in the retrieval plan; confirm names in Phase 0
-      main.py            app entry: WebSocket route, /internal/*, /health
-      config.py
-      server/            existing: WebSocket handling, sessions, turn manager (turn IDs, barge-in)
-      pipeline/          existing: STT, turn handling, TTS streaming
-      providers/         existing: Sarvam and Gemini clients
-      services/          existing: current RAG services (refactor behind kb/ once audited)
-      graph/
-        state.py         state schema
-        builder.py       nodes and edges
-        nodes/           ingest.py retrieve.py agent.py tools.py respond.py
-      booking/
-        state_machine.py gate.py execute.py availability.py holds.py templates.py
-      tools/
-        registry.py schemas.py search_projects.py project_detail.py
-        skills.py links.py check_availability.py start_booking.py
-      kb/
-        loaders.py validate.py ingest.py retrieve.py bm25.py
-      calendar/
-        adapter.py google.py fake.py
-      observability/
-        tracing.py redact.py timings.py
-      prompts/
-        system.md tool_descriptions.yaml
+    config.py
+    server/            existing: WebSocket handling, sessions, turn manager (turn IDs, barge-in)
+    pipeline/          existing: STT, turn handling, TTS streaming
+    providers/         existing: Sarvam and Gemini clients
+    rag/               existing: current RAG retriever and services
+    kb/                existing: loaders, validate, ingest
+    graph/             state.py, builder.py, nodes/
+    prompts/           system.md, tool_descriptions.yaml
+    booking/           state_machine.py, gate.py, execute.py, availability.py, holds.py, templates.py
+    tools/             registry.py, schemas.py, search_projects.py, project_detail.py, skills.py, links.py, ...
+    calendar/          adapter.py, google.py, fake.py
+    observability/     tracing.py, redact.py, timings.py
     tests/
   data/            existing data files (confirm contents in the Phase 0 audit)
   knowledge/       structured/, docs/ (section 6)

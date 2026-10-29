@@ -92,7 +92,7 @@ async def answer_turn(
     try:
         async with asyncio.TaskGroup() as tg:
             try:
-                rag = await retrieve(query, top_k=3)
+                rag = await retrieve(query, top_k=4)
 
                 await send("metric", {
                     "stage": "rag_complete",

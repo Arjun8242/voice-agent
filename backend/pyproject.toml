@@ -10,6 +10,8 @@ dependencies = [
     "google-genai>=1.0",
     "sentence-transformers>=3.0",
     "PyYAML>=6.0",
+    "langgraph>=1.2",
+    "pydantic>=2",
     "tzdata",
 ]
 

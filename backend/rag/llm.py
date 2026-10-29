@@ -125,7 +125,7 @@ def _get_retrieved_chunks(rag: dict) -> list[dict]:
         for chunk in (rag.get("chunks") or [])
     ]
 
-
+#this is for rag (mic -> STT -> answer_turn() -> retrieve() -> stream_answer() -> TTS -> speaker)
 async def stream_answer(
     query: str,
     rag: dict,
@@ -201,3 +201,20 @@ async def generate_answer(
             "query": query,
             "retrievedChunks": retrieved_chunks,
         }
+
+
+async def stream_text(prompt: str, system_instruction: str) -> AsyncIterator[str]:
+    """Yield text pieces from Gemini as they arrive. Used by the graph's agent node."""
+    stream = await _get_client().aio.models.generate_content_stream(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.3,
+            max_output_tokens=150,
+        ),
+    )
+    async for chunk in stream:
+        token = chunk.text or ""
+        if token:
+            yield token
