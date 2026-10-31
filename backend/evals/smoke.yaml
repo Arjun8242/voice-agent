@@ -165,3 +165,23 @@
   query: "What is FitAI built with?"
   expect:
     - {source: docs/projects/fitai.md, heading: "Architecture", contains: [MongoDB]}
+
+- id: redis-no-topic
+  type: direct
+  query: "does he know Redis?"
+  expect:
+    - {source: structured/skills.yaml, heading: "Redis"}
+    - {source: docs/projects/beacon.md, heading: "Architecture > Main components", contains: [Redis]}
+
+- id: redis-stale-topic
+  type: direct
+  topic: fitai
+  query: "does he know Redis?"
+  expect:
+    - {source: structured/skills.yaml, heading: "Redis"}
+    - {source: docs/projects/beacon.md, heading: "Architecture > Main components", contains: [Redis]}
+
+- id: weather-stale-topic
+  type: unanswerable
+  topic: fitai
+  query: "what's the weather like today?"

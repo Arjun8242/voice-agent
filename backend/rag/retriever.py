@@ -253,7 +253,7 @@ async def retrieve(
     if top_k < 0:
         raise ValueError("top_k must be non-negative")
 
-    search_query = f"[{topic}] {query}" if topic else query
+    search_query = query
 
     started = time.perf_counter()
     query_vector = await asyncio.to_thread(

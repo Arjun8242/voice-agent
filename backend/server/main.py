@@ -10,14 +10,14 @@ try:
     from server.connection import handle_connection
     from rag.retriever import init_retriever, retrieve, project_aliases
     from rag.llm import warm_llm, stream_text
-    from graph.builder import build_graph
+    from graph.graph import build_graph
     from graph.api import router as internal_router
     from providers.tts import warm_tts, create_tts_client
 except (ImportError, ModuleNotFoundError):
     from backend.server.connection import handle_connection
     from backend.rag.retriever import init_retriever, retrieve, project_aliases
     from backend.rag.llm import warm_llm, stream_text
-    from backend.graph.builder import build_graph
+    from backend.graph.graph import build_graph
     from backend.graph.api import router as internal_router
     from backend.providers.tts import warm_tts, create_tts_client
 
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
         warm_llm(),
         warm_tts(app.state.tts_client),
     )
-    print("🚀 Voice agent server running on ws://localhost:3001")
+    print("[server] Voice agent server running on ws://localhost:3001")
     yield
 
 

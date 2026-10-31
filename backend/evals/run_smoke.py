@@ -176,17 +176,6 @@ async def run(questions: list[dict], index: Path, k: int) -> tuple[dict[str, lis
         statuses[q["id"]] = out["status"]
     retriever.MIN_SCORE = configured
     return results, statuses, configured
-    from backend.rag import retriever  # heavy import, kept out of module scope
-
-    configured = retriever.MIN_SCORE
-    await retriever.init_retriever(str(index))
-    retriever.MIN_SCORE = 0.0  # see raw scores; thresholds are applied by this runner
-    results = {}
-    for q in questions:
-        out = await retriever.retrieve(q["query"], top_k=k, topic=q.get("topic"))
-        results[q["id"]] = out["chunks"]
-    retriever.MIN_SCORE = configured
-    return results, statuses, configured
 
 
 def print_report(questions, results, statuses, threshold, k) -> int:

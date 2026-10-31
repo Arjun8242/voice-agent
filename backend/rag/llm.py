@@ -15,8 +15,8 @@ except (ImportError, ModuleNotFoundError):
 
 
 FALLBACK_ANSWER = (
-    "I could not confirm that from the approved Harbor & Pine information, "
-    "so I do not want to guess. I can help you request human support."
+    "I don't have that information about Arjun. "
+    "I can only share what's in his verified knowledge base."
 )
 
 
