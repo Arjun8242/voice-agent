@@ -28,13 +28,19 @@ class TurnRequest(BaseModel):
 
 
 @router.post("/turn")
-async def turn(body: TurnRequest, request: Request, API_KEY: str | None = Header(default= None)) -> dict:
+async def turn(
+    body: TurnRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="x-api-key"),
+    api_key: str | None = Header(default=None, alias="api-key"),
+) -> dict:
     internal_api_key = os.environ.get("INTERNAL_API_KEY", "")
 
     if not internal_api_key:
         raise HTTPException(503, "internal endpoints are disabled (INTERNAL_API_KEY is not set)")
 
-    if not API_KEY or not secrets.compare_digest(API_KEY.encode(), internal_api_key.encode()):
+    provided_key = x_api_key or api_key
+    if not provided_key or not secrets.compare_digest(provided_key.encode(), internal_api_key.encode()):
         raise HTTPException(401, "invalid api key")
     
     graph = getattr(request.app.state, "graph", None)

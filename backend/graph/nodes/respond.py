@@ -14,4 +14,3 @@ async def respond_node(state: dict) -> dict:
         "errors": errors,
         "messages": [{"role": "assistant", "text": text}],
     }
- 

@@ -1,0 +1,179 @@
+# Routing eval test cases (S9).
+# Code checks on tool name and arguments; exact match or validated refusal.
+# Each case has:
+#   id: unique test case identifier
+#   category: skill | project_list | project_detail | link | no_tool | boundary | meeting | unclear
+#   query: visitor utterance
+#   expected_tool: tool name or null (for no-tool turns)
+#   expected_args: expected argument map or null
+#   expect_refusal: true if result should refuse (e.g. unknown skill, booking)
+
+- id: route-skill-redis
+  category: skill
+  query: "Does Arjun know Redis?"
+  expected_tool: getSkills
+  expected_args:
+    skill: Redis
+
+- id: route-skill-docker
+  category: skill
+  query: "Has he worked with Docker?"
+  expected_tool: getSkills
+  expected_args:
+    skill: Docker
+
+- id: route-skill-typescript
+  category: skill
+  query: "Does he have experience with TypeScript?"
+  expected_tool: getSkills
+  expected_args:
+    skill: TypeScript
+
+- id: route-skill-unknown-k8s
+  category: skill
+  query: "Has he used Kubernetes in production?"
+  expected_tool: getSkills
+  expected_args:
+    skill: Kubernetes
+  expect_refusal: true
+
+- id: route-skill-unknown-rust
+  category: skill
+  query: "Does Arjun know Rust?"
+  expected_tool: getSkills
+  expected_args:
+    skill: Rust
+  expect_refusal: true
+
+- id: route-skill-all
+  category: skill
+  query: "What technologies and skills does Arjun have?"
+  expected_tool: getSkills
+  expected_args: {}
+
+- id: route-projects-list-all
+  category: project_list
+  query: "What projects has Arjun built?"
+  expected_tool: searchProjects
+  expected_args: {}
+
+- id: route-projects-by-tech-redis
+  category: project_list
+  query: "Which projects of his use Redis?"
+  expected_tool: searchProjects
+  expected_args:
+    tech: Redis
+
+- id: route-projects-by-tech-java
+  category: project_list
+  query: "Has he built any projects in Java?"
+  expected_tool: searchProjects
+  expected_args:
+    tech: Java
+
+- id: route-detail-beacon-arch
+  category: project_detail
+  query: "Can you explain the architecture of Beacon?"
+  expected_tool: getProjectDetail
+  expected_args:
+    project_id: beacon
+    section: Architecture
+
+- id: route-detail-beacon-overview
+  category: project_detail
+  query: "Tell me more about what Beacon does."
+  expected_tool: getProjectDetail
+  expected_args:
+    project_id: beacon
+    section: Overview
+
+- id: route-detail-fitai-challenges
+  category: project_detail
+  query: "What were the challenges when building FitAI?"
+  expected_tool: getProjectDetail
+  expected_args:
+    project_id: fitai
+    section: Challenges and how they were solved
+
+- id: route-detail-valyrian-limitations
+  category: project_detail
+  query: "What are the limitations of the Valyrian interpreter?"
+  expected_tool: getProjectDetail
+  expected_args:
+    project_id: valyrian
+    section: Limitations and not yet done
+
+- id: route-link-github
+  category: link
+  query: "What is Arjun's GitHub profile link?"
+  expected_tool: getLinks
+  expected_args:
+    type: github_profile
+
+- id: route-link-resume
+  category: link
+  query: "Can I see his resume?"
+  expected_tool: getLinks
+  expected_args:
+    type: resume
+
+- id: route-link-portfolio
+  category: link
+  query: "Where can I find his personal portfolio website?"
+  expected_tool: getLinks
+  expected_args:
+    type: portfolio
+
+- id: route-link-linkedin
+  category: link
+  query: "Does he have a LinkedIn profile?"
+  expected_tool: getLinks
+  expected_args:
+    type: professional_profile
+
+- id: route-link-leetcode
+  category: link
+  query: "Can you share his LeetCode profile?"
+  expected_tool: getLinks
+  expected_args:
+    type: coding_profile
+
+- id: route-no-tool-greeting
+  category: no_tool
+  query: "Hi there, good morning!"
+  expected_tool: null
+  expected_args: null
+
+- id: route-no-tool-thanks
+  category: no_tool
+  query: "Thank you for the explanation, that was very clear."
+  expected_tool: null
+  expected_args: null
+
+- id: route-no-tool-offtopic
+  category: no_tool
+  query: "What is the weather like in Tokyo right now?"
+  expected_tool: null
+  expected_args: null
+
+- id: route-boundary-salary
+  category: boundary
+  query: "What is Arjun's current salary expectation?"
+  expected_tool: null
+  expected_args: null
+  expect_refusal: true
+
+- id: route-boundary-contact
+  category: boundary
+  query: "Can you give me Arjun's personal phone number?"
+  expected_tool: null
+  expected_args: null
+  expect_refusal: true
+
+- id: route-meeting-request
+  category: meeting
+  query: "I'd like to book a meeting with Arjun next Tuesday."
+  expected_tool: null
+  expected_args: null
+  expect_refusal: true
+

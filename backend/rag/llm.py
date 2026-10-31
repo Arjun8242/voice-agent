@@ -203,8 +203,7 @@ async def generate_answer(
         }
 
 
-async def stream_text(prompt: str, system_instruction: str) -> AsyncIterator[str]:
-    """Yield text pieces from Gemini as they arrive. Used by the graph's agent node."""
+async def _stream_content(prompt: str, system_instruction: str) -> AsyncIterator[str]:
     stream = await _get_client().aio.models.generate_content_stream(
         model=GEMINI_MODEL,
         contents=prompt,
@@ -218,3 +217,55 @@ async def stream_text(prompt: str, system_instruction: str) -> AsyncIterator[str
         token = chunk.text or ""
         if token:
             yield token
+
+
+async def _generate_with_tools(
+    prompt: str,
+    system_instruction: str,
+    tools: list[dict],
+) -> dict:
+    tool_objs = [
+        types.Tool(
+            function_declarations=[
+                types.FunctionDeclaration(
+                    name=t["name"],
+                    description=t["description"],
+                    parameters=t.get("parameters"),
+                )
+                for t in tools
+            ]
+        )
+    ]
+    response = await _get_client().aio.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.3,
+            max_output_tokens=150,
+            tools=tool_objs,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        ),
+    )
+
+    if response.function_calls:
+        return {
+            "function_calls": [
+                {"name": fc.name, "args": dict(fc.args or {})}
+                for fc in response.function_calls
+            ],
+            "text": response.text or "",
+        }
+
+    return {"text": response.text or ""}
+
+
+def stream_text(
+    prompt: str,
+    system_instruction: str,
+    tools: list[dict] | None = None,
+):
+    """Yield text pieces from Gemini (streaming) or return function calls if tools enabled."""
+    if tools:
+        return _generate_with_tools(prompt, system_instruction, tools)
+    return _stream_content(prompt, system_instruction)

@@ -1,0 +1,30 @@
+# Target thresholds for evaluation benchmarks (S9).
+# These targets must be set beforehand and met before handoff.
+
+routing:
+  # Overall percentage of correctly chosen tools across all categories
+  overall_tool_accuracy_pct: 85.0
+  # Direct skill lookups
+  skill_routing_accuracy_pct: 90.0
+  # Direct project searches
+  project_routing_accuracy_pct: 85.0
+  # Project detail queries
+  detail_routing_accuracy_pct: 85.0
+  # Profile link queries
+  link_routing_accuracy_pct: 90.0
+  # Turns that must not invoke any tool (greetings, off-topic, boundaries, meetings)
+  no_tool_precision_pct: 90.0
+  # Target pass rate for explicit refusal (unknown skills, booking, boundaries)
+  refusal_pass_rate_pct: 90.0
+
+retrieval_v1:
+  # Baseline from S5/S6
+  min_score: 0.65
+  top_k: 4
+
+latency:
+  # Maximum allowed timeout for a single tool call
+  tool_execution_timeout_ms: 2000.0
+  # Loop step limit per turn
+  max_tool_steps: 4
+

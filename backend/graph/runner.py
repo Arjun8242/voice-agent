@@ -20,10 +20,10 @@ async def stream_turn(graph, session_id: str, text: str) -> AsyncIterator[tuple[
 async def run_turn(graph, session_id: str, text: str) -> dict:
     start = time.perf_counter()
     first_token_ms = None
-    retrieval: dict ={}
+    retrieval: dict = {}
     final: dict = {}
 
-    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text):
+    async for mode, chunk in stream_turn(graph, session_id=session_id, text=text):
 
         if mode == "custom" and chunk.get("type") == "token" and first_token_ms is None:
             first_token_ms = round((time.perf_counter() - start)*1000, 1)
@@ -34,18 +34,17 @@ async def run_turn(graph, session_id: str, text: str) -> dict:
         elif mode == "values":
             final = chunk
 
-    return{
+    return {
         "reply": final.get("final_text", ""),
-        "retrieval_status" : final.get("retrieval_status"),
-        "sources" : retrieval.get("sources", []),
+        "retrieval_status": final.get("retrieval_status"),
+        "sources": retrieval.get("sources", []),
         "topic": final.get("topic"),
         "topic_fallback": retrieval.get("topicFallback", False),
         "errors": final.get("errors", []),
         "stage_ms": final.get("stage_ms", {}),
         "first_token_ms": first_token_ms,
         "total_ms": round((time.perf_counter() - start) * 1000, 1),
+        # S9: tool calling output
+        "tool_calls": final.get("tool_calls_made", []),
+        "cards": final.get("cards", []),
     }
-
-        
-
-        
