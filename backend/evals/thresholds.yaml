@@ -1,0 +1,6 @@
+# Eval targets (design doc section 9). These are Arjun's to set, before a run,
+# not tuned to whatever a run happened to score.
+
+routing:
+  # share of (case x run) results that must pass in run_routing.py
+  min_pass_rate: 0.90  # PROPOSED by Claude, not yet confirmed by Arjun

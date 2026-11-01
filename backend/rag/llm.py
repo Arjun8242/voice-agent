@@ -202,9 +202,27 @@ async def generate_answer(
             "retrievedChunks": retrieved_chunks,
         }
 
+#219 se 220 converts your Python dictionary into a Gemini SDK function declaration
+#automatic func calling disabled bcz graph should control tools execution
+async def stream_text(
+    prompt: str,
+    system_instruction: str,
+    tools: list[dict] | None = None,
+) -> AsyncIterator[str | dict]:
+    """Yield Gemini output as it arrives. Used by the graph's agent node.
 
-async def stream_text(prompt: str, system_instruction: str) -> AsyncIterator[str]:
-    """Yield text pieces from Gemini as they arrive. Used by the graph's agent node."""
+    Text parts are yielded as str; tool calls as {"name": ..., "args": {...}} dict.
+    tools are declarations {name, description, parameters (JSON schema)}; 
+    """
+    tool_config = {}
+    if tools:
+        tool_config = {
+            "tools": [types.Tool(function_declarations=[
+                types.FunctionDeclaration(name=t["name"], description=t["description"], parameters_json_schema=t["parameters"])
+                for t in tools
+            ])],
+            "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
+        }
     stream = await _get_client().aio.models.generate_content_stream(
         model=GEMINI_MODEL,
         contents=prompt,
@@ -212,9 +230,28 @@ async def stream_text(prompt: str, system_instruction: str) -> AsyncIterator[str
             system_instruction=system_instruction,
             temperature=0.3,
             max_output_tokens=150,
+            **tool_config,
         ),
     )
     async for chunk in stream:
-        token = chunk.text or ""
-        if token:
-            yield token
+        # Extract candidate content
+        candidates = chunk.candidates
+    
+        if not candidates:
+            continue
+    
+        content = candidates[0].content
+        if not content:
+            continue
+    
+        # Process individual response parts
+        for part in content.parts or []:
+    
+            if part.function_call:
+                yield {
+                    "name": part.function_call.name,
+                    "args": dict(part.function_call.args or {}),
+                }
+    
+            elif part.text and not part.thought:
+                yield part.text

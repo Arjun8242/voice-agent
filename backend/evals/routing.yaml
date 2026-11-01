@@ -1,0 +1,128 @@
+# S9 routing set: does the agent pick the right tool with the right arguments?
+# Checked by code only (no LLM judge). Each case is a fresh session.
+#
+#   id, category, query
+#   expect.tool:  tool name that must appear among the turn's calls, or null = no tool may be called
+#   expect.args:  {arg: value} the call must have (case-insensitive). A list of values = any of them.
+#                 null as a value = the argument must be absent. A list of dicts = any one set matches.
+#   expect.ask:   true = no tool, and the reply must ask a question (unclear requests)
+
+# --- skills: getSkills with the named skill --------------------------------
+- id: skill-redis
+  category: skill
+  query: Does Arjun know Redis?
+  expect: {tool: getSkills, args: {skill: Redis}}
+- id: skill-docker
+  category: skill
+  query: Has he worked with Docker?
+  expect: {tool: getSkills, args: {skill: Docker}}
+- id: skill-postgres-spoken
+  category: skill
+  query: is he comfortable with postgres
+  expect: {tool: getSkills, args: {skill: [Postgres, PostgreSQL]}}
+- id: skill-react-asr
+  category: skill
+  query: does arjun no react
+  expect: {tool: getSkills, args: {skill: [React, React.js, ReactJS]}}
+- id: skill-unlisted-kubernetes
+  category: skill
+  query: Has he used Kubernetes?
+  expect: {tool: getSkills, args: {skill: [Kubernetes, k8s]}}
+- id: skill-unlisted-rust
+  category: skill
+  query: How good is he at Rust?
+  expect: {tool: getSkills, args: {skill: Rust}}
+- id: skill-all
+  category: skill
+  query: What are his technical skills?
+  expect: {tool: getSkills, args: {skill: null}}
+
+# --- project lists: searchProjects ----------------------------------------
+- id: projects-all
+  category: project_list
+  query: What projects has Arjun built?
+  expect: {tool: searchProjects}
+- id: projects-by-tech
+  category: project_list
+  query: Which of his projects use Redis?
+  expect: {tool: searchProjects, args: [{tech: Redis}, {query: Redis}]}
+- id: projects-by-tech-java
+  category: project_list
+  query: Has he built anything in Java?
+  expect: {tool: searchProjects, args: [{tech: Java}, {query: Java}]}
+
+# --- show a project: getProjectDetail --------------------------------------
+- id: detail-show-beacon
+  category: project_detail
+  query: Show me the Beacon project.
+  expect: {tool: getProjectDetail, args: {project_id: beacon}}
+- id: detail-open-valyrian-architecture
+  category: project_detail
+  query: Open the architecture of Valyrian.
+  expect: {tool: getProjectDetail, args: {project_id: valyrian, section: Architecture}}
+- id: detail-show-fitai-limitations
+  category: project_detail
+  query: Pull up the limitations section for FitAI.
+  expect: {tool: getProjectDetail, args: {project_id: fitai, section: [Limitations, Scope and Limitations]}}
+
+# --- links: getLinks with the right type -----------------------------------
+- id: link-github
+  category: link
+  query: Can you share his GitHub?
+  expect: {tool: getLinks, args: {type: github_profile}}
+- id: link-resume
+  category: link
+  query: Where can I see his resume?
+  expect: {tool: getLinks, args: {type: resume}}
+- id: link-linkedin
+  category: link
+  query: Send me his LinkedIn.
+  expect: {tool: getLinks, args: {type: professional_profile}}
+- id: link-leetcode
+  category: link
+  query: Does he have a LeetCode profile I can look at?
+  expect: {tool: getLinks, args: {type: coding_profile}}
+- id: link-portfolio
+  category: link
+  query: Does he have a portfolio website?
+  expect: {tool: getLinks, args: {type: portfolio}}
+
+# --- no tool: meetings, boundaries, off-topic, greetings -------------------
+- id: none-meeting
+  category: no_tool
+  query: Can we schedule a call with him next week?
+  expect: {tool: null}
+- id: none-book
+  category: no_tool
+  query: Book a 30 minute meeting with Arjun.
+  expect: {tool: null}
+- id: none-salary
+  category: no_tool
+  query: What salary is he expecting?
+  expect: {tool: null}
+- id: none-phone
+  category: no_tool
+  query: What's his phone number?
+  expect: {tool: null}
+- id: none-offtopic
+  category: no_tool
+  query: What's the capital of France?
+  expect: {tool: null}
+- id: none-greeting
+  category: no_tool
+  query: Hi there!
+  expect: {tool: null}
+- id: none-thanks
+  category: no_tool
+  query: Thanks, that was helpful.
+  expect: {tool: null}
+
+# --- unclear: ask instead of guessing a tool -------------------------------
+- id: ask-that
+  category: unclear
+  query: Can you tell me more about that?
+  expect: {tool: null, ask: true}
+- id: ask-show
+  category: unclear
+  query: Show me.
+  expect: {tool: null, ask: true}

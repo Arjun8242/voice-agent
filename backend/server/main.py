@@ -4,6 +4,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, WebSocket
 
 try:
@@ -13,6 +14,8 @@ try:
     from graph.graph import build_graph
     from graph.api import router as internal_router
     from providers.tts import warm_tts, create_tts_client
+    from tools.kb_data import load_kb_data
+    from tools.registry import build_registry
 except (ImportError, ModuleNotFoundError):
     from backend.server.connection import handle_connection
     from backend.rag.retriever import init_retriever, retrieve, project_aliases
@@ -20,12 +23,19 @@ except (ImportError, ModuleNotFoundError):
     from backend.graph.graph import build_graph
     from backend.graph.api import router as internal_router
     from backend.providers.tts import warm_tts, create_tts_client
+    from backend.tools.kb_data import load_kb_data
+    from backend.tools.registry import build_registry
+
+KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_retriever()
-    app.state.graph = build_graph(retrieve_fn=retrieve, generate_fn=stream_text, aliases=project_aliases())
+    registry = build_registry(load_kb_data(KB_DIR))
+    app.state.graph = build_graph(
+        retrieve_fn=retrieve, generate_fn=stream_text, aliases=project_aliases(), registry=registry,
+    )
     app.state.tts_client = create_tts_client()
     await asyncio.gather(
         warm_llm(),

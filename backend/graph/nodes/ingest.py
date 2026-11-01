@@ -23,6 +23,10 @@ def create_ingest_node(aliases: dict[str, str]):
             "final_text": "",
             "errors": [],
             "stage_ms": {},
+            "tool_steps": 0,
+            "tool_calls": [],
+            "pending_tool_calls": [],
+            "cards": [],
         }
         mentioned = find_projects(query, aliases)
         if len(mentioned) == 1:

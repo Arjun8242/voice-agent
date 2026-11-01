@@ -40,6 +40,8 @@ async def run_turn(graph, session_id: str, text: str) -> dict:
         "sources" : retrieval.get("sources", []),
         "topic": final.get("topic"),
         "topic_fallback": retrieval.get("topicFallback", False),
+        "tool_calls": final.get("tool_calls", []),
+        "cards": final.get("cards", []),
         "errors": final.get("errors", []),
         "stage_ms": final.get("stage_ms", {}),
         "first_token_ms": first_token_ms,

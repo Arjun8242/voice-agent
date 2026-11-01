@@ -1,0 +1,28 @@
+# Each one says when to use the tool and which neighbouring tool to use instead.
+
+searchProjects: >
+  List Arjun's projects with id, name, one-line summary and status. Use it when
+  the visitor asks what Arjun has built or which projects use a technology
+  (pass that technology as tech). For how a project works or why it was built a
+  certain way, use getProjectDetail. For whether Arjun knows a technology, use
+  getSkills.
+
+getProjectDetail: >
+  Get one section of a project's document: Overview, Architecture, Key
+  decisions, Limitations or Testing. Use it when the visitor asks how a named
+  project works, why it was designed a certain way, what is not done, or how it
+  was tested. It also shows the project on screen. Needs a project id; if you do
+  not know it, call searchProjects first. For a list of projects, use
+  searchProjects.
+
+getSkills: >
+  Look up Arjun's skills. When the visitor names a skill or technology, pass it
+  as skill to get the projects or jobs that show it; found false means it is
+  not a listed skill. Call with no skill only when the visitor asks for all of
+  his skills. For which projects use a technology, use searchProjects.
+
+getLinks: >
+  Show one of Arjun's profile links on screen: portfolio, resume, GitHub,
+  LinkedIn or a coding profile. Use it when the visitor asks for a link,
+  profile, resume or where to see his code. For details about a project, use
+  getProjectDetail.
