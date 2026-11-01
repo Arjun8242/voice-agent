@@ -34,3 +34,4 @@ env/
 venv/
 .venv/
 .pytest_cache/
+data/turn_log.jsonl

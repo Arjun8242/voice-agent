@@ -56,4 +56,4 @@ async def health_check() -> dict:
 
 @app.websocket("/")
 async def websocket_endpoint(ws: WebSocket) -> None:
-    await handle_connection(ws, ws.app.state.tts_client)
+    await handle_connection(ws, ws.app.state.tts_client, ws.app.state.graph)

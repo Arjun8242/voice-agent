@@ -41,14 +41,14 @@ def _tool_call(call: dict) -> str:
 def build_prompt(state: dict, tools_offered: bool = False) -> str:
     messages = state.get("messages", [])
     history = messages[:-1][-HISTORY_ITEMS:]  # the last message is the current query
-    first_reply = not any(m["role"] == "assistant" for m in messages)
+    first_reply = not any(m.type == "ai" for m in messages)
     status = state.get("retrieval_status", "skipped")
     chunks = (state.get("retrieved") or {}).get("chunks", [])
     calls = state.get("tool_calls", [])
 
     conversations = []
     if history:
-        lines = [f"{'Visitor' if m['role'] == 'user' else 'Agent'}: {m['text']}" for m in history]
+        lines = [f"{'Visitor' if m.type == 'human' else 'Agent'}: {m.content}" for m in history]
         conversations.append("Conversation so far:\n" + "\n".join(lines))
     if first_reply:
         conversations.append("This is your first reply. Begin with one short sentence saying you are an AI assistant that speaks about Arjun.")

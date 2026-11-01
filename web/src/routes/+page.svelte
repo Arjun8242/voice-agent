@@ -1,7 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { startMic, stopMic } from '$lib/mic';
-  import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone } from '$lib/playback';
+  import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone, currentSentenceId } from '$lib/playback';
+  import type { Card } from '$lib/cards';
+  import ProjectCard from '$lib/components/ProjectCard.svelte';
+  import LinkCard from '$lib/components/LinkCard.svelte';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
   import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -14,6 +17,11 @@
   let partialText = $state('');
   let finalText = $state('');
   let assistantText = $state('');
+  let cards = $state<Card[]>([]);
+  // Turns up to this id were interrupted; the server tags every message of a turn with turnId.
+  let cancelledTurn = 0;
+  // Turn whose answer the server has finished sending; its audio may still be playing here.
+  let doneTurn = 0;
   let errorMsg = $state('');
   let metrics = $state<{ ttfaMs?: number; ragMs?: number; geminiTtftMs?: number; totalMs?: number }>({});
 
@@ -46,6 +54,9 @@
 
       const msg = JSON.parse(ev.data as string);
 
+      // A cancelled turn's text or card must never show up late.
+      if (msg.turnId !== undefined && msg.turnId <= cancelledTurn) return;
+
       switch (msg.type) {
         case 'transcript_partial':
           partialText = msg.text;
@@ -55,12 +66,18 @@
           finalText = msg.text;
           partialText = '';
           assistantText = "";
+          cards = [];
           resetPlayback(audioEl);
           status = 'thinking';
           break;
 
         case 'assistant_text':
           assistantText += msg.text;
+          break;
+
+        case 'ui_card':
+          // Same card_id replaces the earlier card instead of showing it twice.
+          cards = [...cards.filter((c) => c.card_id !== msg.card.card_id), msg.card];
           break;
 
         case 'metric':
@@ -77,6 +94,7 @@
 
         case 'done':
           metrics.totalMs = msg.totalMs;
+          doneTurn = msg.turnId;
           signalDone();
           // Only return to listening if the mic is still on.
           status = micActive ? 'listening' : 'idle';
@@ -84,6 +102,9 @@
 
         case 'interrupted':
           // Server superseded current turn due to barge-in
+          if (msg.turnId > cancelledTurn) cancelledTurn = msg.turnId;
+          // Tell the server which sentence was playing, so it keeps only what the visitor heard.
+          ws?.send(JSON.stringify({ type: 'playback_progress', turnId: msg.turnId, lastSentenceId: currentSentenceId() }));
           resetPlayback(audioEl);
           assistantText = '';
           status = micActive ? 'listening' : 'idle';
@@ -112,6 +133,7 @@
     partialText = '';
     finalText = '';
     assistantText = '';
+    cards = [];
     errorMsg = '';
     metrics = {};
     resetPlayback(audioEl);
@@ -137,6 +159,12 @@
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   onMount(() => {
     initPlayback(audioEl);
+    // The answer's audio finished: tell the server, so speech from now on is a new question, not a barge-in.
+    audioEl.addEventListener('ended', () => {
+      if (doneTurn && ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'playback_ended', turnId: doneTurn }));
+      }
+    });
     connectWS();
   });
 
@@ -238,6 +266,15 @@
         <p class="text-sm leading-relaxed">{assistantText}</p>
       </div>
     {/if}
+
+    <!-- Cards from tools (project detail, links) -->
+    {#each cards as card (card.card_id)}
+      {#if card.type === 'project_detail'}
+        <ProjectCard data={card.data} />
+      {:else if card.type === 'link'}
+        <LinkCard data={card.data} />
+      {/if}
+    {/each}
 
     <!-- Error -->
     {#if errorMsg}

@@ -1,5 +1,7 @@
 """respond node: finalise the reply and record it in the conversation history."""
  
+from langchain_core.messages import AIMessage
+
 from .agent import ERROR_REPLY
  
  
@@ -12,6 +14,6 @@ async def respond_node(state: dict) -> dict:
     return {
         "final_text": text,
         "errors": errors,
-        "messages": [{"role": "assistant", "text": text}],
+        "messages": [AIMessage(text)],
     }
  

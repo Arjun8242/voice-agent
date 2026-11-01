@@ -28,7 +28,7 @@ class SearchProjectsArgs(Args):
 
 
 class GetProjectDetailArgs(Args):
-    project_id: str = Field(description="Project id as returned by searchProjects)
+    project_id: str = Field(description="Project id as returned by searchProjects.")
     section: str = Field(
         description="One of: Overview, Architecture, Key decisions, Limitations, Testing; or an exact section heading."
     )

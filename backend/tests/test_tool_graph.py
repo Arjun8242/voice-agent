@@ -6,7 +6,7 @@ import pytest
 
 from backend.graph.graph import build_graph
 from backend.graph.nodes.tools import MAX_TOOL_STEPS
-from backend.graph.runner import run_turn
+from backend.graph.runner import run_turn, stream_turn
 from backend.tools.registry import build_registry
 from backend.tests.test_tools import DESCRIPTIONS, make_kb
 
@@ -144,3 +144,13 @@ def test_cancelling_mid_tools_leaves_the_session_usable():
 
     out = asyncio.run(scenario())
     assert out["reply"] == "after cancel" and out["tool_calls"] == []
+
+
+def test_cards_are_streamed_once_each_before_the_answer_tokens():
+    model = ScriptedModel([call("getLinks", type="github_profile")], ["Here."])
+    graph = make_graph(model)
+
+    async def events():
+        return [e async for mode, e in stream_turn(graph, "ev", "github") if mode == "custom"]
+    types = [e["type"] for e in asyncio.run(events())]
+    assert types.count("card") == 1 and types.index("card") < types.index("token")

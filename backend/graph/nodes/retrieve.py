@@ -26,17 +26,19 @@ def create_retrieve_node(retrieve_fn):
                 "stage_ms": {**state.get("stage_ms", {}), "retrieve": None},
             }
         
+        ms = round((time.perf_counter() - start) * 1000, 1)
         get_stream_writer()({
             "type": "retrieval",
             "status" : rag["status"],
             "sources": [c["metadata"].get("id") for c in rag.get("chunks", [])],
             "topic": topic,
             "topicFallback": fallback,
+            "ms": ms,
         })
         return {
             "retrieved": rag,
             "retrieval_status": rag["status"],
-            "stage_ms": {**state.get("stage_ms", {}), "retrieve": round((time.perf_counter() - start) * 1000, 1)},
+            "stage_ms": {**state.get("stage_ms", {}), "retrieve": ms},
         }
  
     return retrieve_node

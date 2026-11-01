@@ -1,6 +1,8 @@
 """ingest node: record the visitor's message, reset per-turn fields, update the topic."""
  
 import re
+
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
  
  
 def find_projects(query: str, aliases: dict[str, str]) -> set[str]:
@@ -15,9 +17,19 @@ def find_projects(query: str, aliases: dict[str, str]) -> set[str]:
 def create_ingest_node(aliases: dict[str, str]):
     async def ingest_node(state: dict) -> dict:
         query = (state.get("query") or "").strip()
+        messages = []
+        heard = (state.get("interrupted_reply") or "").strip()
+        if heard:  # the visitor cut the last answer off: keep only what they heard, ahead of the new question
+            history = state.get("messages") or []
+            if history and isinstance(history[-1], AIMessage):
+                # the full answer was already saved (the cut came while it was still being spoken): replace it
+                messages.append(RemoveMessage(id=history[-1].id))
+            messages.append(AIMessage(heard))
+        messages.append(HumanMessage(query))
         update: dict = {
             "query": query,
-            "messages": [{"role": "user", "text": query}],
+            "messages": messages,
+            "interrupted_reply": "",  # one-shot input: must not be added again next turn
             "retrieved": {},
             "retrieval_status": "skipped",
             "final_text": "",

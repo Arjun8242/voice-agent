@@ -28,3 +28,18 @@ def create_send(ws: Any):
             pass
 
     return send
+
+
+def with_turn_id(send, turn_id: int):
+    """Wrap send() so every JSON message carries turnId; binary audio frames pass through.
+
+    The client drops messages from turns it has been told were interrupted, so a card or
+    text from a cancelled turn can never show up late.
+    """
+    async def send_for_turn(message_type: str | bytes, payload: dict | None = None) -> None:
+        if isinstance(message_type, (bytes, bytearray)):
+            await send(message_type)
+        else:
+            await send(message_type, {**(payload or {}), "turnId": turn_id})
+
+    return send_for_turn

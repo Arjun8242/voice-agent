@@ -3,16 +3,23 @@
 Calls run in parallel (all registered tools are read-only). Only the calls that
 fit under MAX_TOOL_STEPS run; any beyond it get a step_cap error result, so the
 model is told instead of the call silently vanishing.
+
+S10: each card is also sent as a custom stream event the moment the tools finish,
+before the agent's next call, so the card shows while the answer is being spoken.
+The same cards stay in state["cards"] for run_turn and /internal/turn.
 """
 
 import asyncio
 import time
+
+from langgraph.config import get_stream_writer
 
 MAX_TOOL_STEPS = 4  # tool calls per turn (design doc 4.1)
 
 
 def create_tools_node(registry):
     async def tools_node(state: dict) -> dict:
+        write = get_stream_writer()
         start = time.perf_counter()
         pending = state.get("pending_tool_calls", [])
         steps = state.get("tool_steps", 0)
@@ -24,13 +31,17 @@ def create_tools_node(registry):
             records.append({"name": c["name"], "args": c["args"], "cards": [], "ok": False, "ms": 0.0,
                             "result": {"error": "step_cap", "details": f"Only {MAX_TOOL_STEPS} tool calls are allowed per turn."}})
 
+        new_cards = [card for r in records for card in r["cards"]]
+        for card in new_cards:
+            write({"type": "card", "card": card})
+
         stage = dict(state.get("stage_ms", {}))
         stage["tools"] = round(stage.get("tools", 0) + (time.perf_counter() - start) * 1000, 1)
         return {
             "pending_tool_calls": [],
             "tool_steps": steps + len(to_run),
             "tool_calls": [*state.get("tool_calls", []), *({k: v for k, v in r.items() if k != "cards"} for r in records)],
-            "cards": [*state.get("cards", []), *(card for r in records for card in r["cards"])],
+            "cards": [*state.get("cards", []), *new_cards],
             "stage_ms": stage,
         }
 

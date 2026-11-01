@@ -4,20 +4,24 @@ Persisted per session by the checkpointer (thread_id = session_id):
     messages, topic
 Reset at the start of every turn by ingest_turn:
     retrieved, retrieval_status, final_text, errors, stage_ms,
-    tool_steps, tool_calls, pending_tool_calls, cards
+    tool_steps, tool_calls, pending_tool_calls, cards, interrupted_reply
 
-Only messages has a reducer (each turn appends to the history). Every other
-field is replaced by what a node returns, so ingest's empty values really reset
-it. With an add reducer, ingest's [] would add nothing and the lists would keep
-growing across turns.
+Only messages has a reducer: LangGraph's built-in add_messages. It appends
+HumanMessage / AIMessage objects, gives each an id, and removes a message when a
+node returns RemoveMessage(id=...). Every other field is replaced by what a node
+returns, so ingest's empty values really reset it. With an add reducer, ingest's
+[] would add nothing and the lists would keep growing across turns.
 """
 
-import operator
 from typing import TypedDict, Annotated
+
+from langchain_core.messages import AnyMessage
+from langgraph.graph.message import add_messages
 
 class TurnState(TypedDict, total = False):
     query: str
-    messages: Annotated[list[dict], operator.add]
+    interrupted_reply: str         # input: heard part of the previous answer after a barge-in (S12)
+    messages: Annotated[list[AnyMessage], add_messages]
     topic: str | None
     retrieved: dict
     retrieval_status: str
