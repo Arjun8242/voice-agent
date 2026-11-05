@@ -36,7 +36,15 @@
     ws = new WebSocket(WS_URL);
     ws.binaryType = 'arraybuffer';
 
-    ws.onopen = () => { errorMsg = ''; };
+    ws.onopen = () => {
+      errorMsg = '';
+      // First message of every page load: resend the id kept from before (empty on a first visit).
+      ws?.send(JSON.stringify({
+        type: 'session_start',
+        sessionId: sessionStorage.getItem('sessionId') ?? '',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }));
+    };
     ws.onerror = () => { errorMsg = 'WebSocket error — is the server running on :3001?'; };
     ws.onclose = () => {
       stopMic();
@@ -58,6 +66,10 @@
       if (msg.turnId !== undefined && msg.turnId <= cancelledTurn) return;
 
       switch (msg.type) {
+        case 'session':
+          sessionStorage.setItem('sessionId', msg.sessionId);
+          break;
+
         case 'transcript_partial':
           partialText = msg.text;
           break;

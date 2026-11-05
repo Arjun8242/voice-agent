@@ -83,6 +83,7 @@ async def voice_turn(
     session_id: str,
     interrupted_reply: str = "",
     timings: dict | None = None,
+    visitor_timezone: str = "",
 ) -> None:
     """Run one turn through the graph. Cancellable via task cancellation or interrupt_event.
 
@@ -131,7 +132,7 @@ async def voice_turn(
 
     try:
         async with asyncio.TaskGroup() as tg:
-            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply):
+            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone):
                 if mode == "values":  # state after each step: only the tool calls are needed here
                     tools_used = [c["name"] for c in event.get("tool_calls", [])]
                     continue

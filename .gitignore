@@ -7,7 +7,6 @@ node_modules/
 # Documentation
 phase0-audit.md
 knowledge_base/docs/decisions/phase0-audit.md
-docs/what's_next.md
 
 
 # Logs & output files
@@ -35,3 +34,10 @@ venv/
 .venv/
 .pytest_cache/
 data/turn_log.jsonl
+
+
+# Local tooling and tests
+tests
+CLAUDE.md
+.claude/
+graphify-out/

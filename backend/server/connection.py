@@ -1,12 +1,12 @@
 """connection.py: Per-connection handler — wires barge-in, STT, and answer turns.
-
 """
-
+import re
 import asyncio
 import json
 import time
 import uuid
 from typing import Any
+from zoneinfo import ZoneInfo
 from fastapi import WebSocket
 import httpx
 
@@ -45,6 +45,16 @@ except (ImportError, ModuleNotFoundError):
     )
     from backend.providers.stt import create_stt
 
+DEFAULT_TIMEZONE = "Asia/Kolkata"
+SESSION_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+def valid_timezone(name: object) -> str:
+    try:
+        ZoneInfo(name)
+        return name
+    except Exception:
+        return DEFAULT_TIMEZONE
+
 
 async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph: Any) -> None:
     """Handle one WebSocket connection from accept() to disconnect.
@@ -58,6 +68,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     conv: Conversation = new_conversation()
     send = create_send(ws)
     session_id = uuid.uuid4().hex
+    visitor_timezone = DEFAULT_TIMEZONE
     turn_id = 0  # counts turns on this connection; every message of a turn carries it
 
     # A new event is created for each turn so a stale event from a cancelled turn
@@ -105,7 +116,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             waited = time.perf_counter()
             heard = await take_heard(conv)  # what the visitor heard of a cut-off answer, if the last turn was one
             timings["wait_ms"] = round((time.perf_counter() - waited) * 1000, 1)
-            await voice_turn(text, conv, send, ev, tts_client, graph, session_id, heard, timings)
+            await voice_turn(text, conv, send, ev, tts_client, graph, session_id, heard, timings, visitor_timezone=visitor_timezone)
         except Exception as err:  # CancelledError is not an Exception: a barge-in ends the task as cancelled
             print(f"[voiceTurn] {err}")
         finally:
@@ -116,7 +127,10 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     # -------------------------------------------------------------------------
     def on_client_message(raw: str) -> None:
         """playback_progress: the sentence that was playing when the answer was cut off.
-        playback_ended: the answer's audio finished, so speech from now on is not a barge-in."""
+        playback_ended: the answer's audio finished, so speech from now on is not a barge-in.
+        session_start: the first message of a page load. Carries the id the browser kept (so a refresh
+        continues the same graph thread) and the visitor's timezone."""
+        nonlocal session_id, visitor_timezone
         try:
             data = json.loads(raw)
         except ValueError:
@@ -125,6 +139,12 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             record_report(conv, data.get("turnId"), data.get("lastSentenceId"))
         elif isinstance(data, dict) and data.get("type") == "playback_ended" and data.get("turnId") == turn_id:
             conv.agent_speaking = False  # an older turn's ended message must not clear a newer turn's audio
+        elif isinstance(data, dict) and data.get("type") == "session_start":
+            old = data.get("sessionId")
+            if isinstance(old, str) and SESSION_ID_RE.fullmatch(old):  # only ids we could have made: it becomes a thread id
+                session_id = old
+            visitor_timezone = valid_timezone(data.get("timezone"))
+            asyncio.get_running_loop().create_task(send("session", {"sessionId": session_id}))  # the browser stores this
 
     # -------------------------------------------------------------------------
     # STT client

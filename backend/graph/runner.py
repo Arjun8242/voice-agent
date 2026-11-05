@@ -8,14 +8,17 @@ The session id doubles as the checkpointer thread id, so history is per session.
 import time
 from typing import AsyncIterator
 
-async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "") -> AsyncIterator[tuple[str, object]]:
+async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "", visitor_timezone: str = "") -> AsyncIterator[tuple[str, object]]:
     """Yield ("custom", event) as the graph emits them and ("values", state) after each step.
 
     interrupted_reply: what the visitor heard of the previous answer before cutting in.
+    visitor_timezone: IANA name from the browser; saved in the checkpoint like the rest of the state.
     """
 
     config = {"configurable": {"thread_id": session_id}}
     inputs = {"query": text}
+    if visitor_timezone:
+        inputs["visitor_timezone"] = visitor_timezone
     if interrupted_reply:
         inputs["interrupted_reply"] = interrupted_reply
 

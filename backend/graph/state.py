@@ -1,7 +1,7 @@
 """state.py: the per-session graph state (design doc section 4.1, S7 + S9 subset).
 
 Persisted per session by the checkpointer (thread_id = session_id):
-    messages, topic
+    messages, topic, visitor_timezone
 Reset at the start of every turn by ingest_turn:
     retrieved, retrieval_status, final_text, errors, stage_ms,
     tool_steps, tool_calls, pending_tool_calls, cards, interrupted_reply
@@ -23,6 +23,7 @@ class TurnState(TypedDict, total = False):
     interrupted_reply: str         # input: heard part of the previous answer after a barge-in (S12)
     messages: Annotated[list[AnyMessage], add_messages]
     topic: str | None
+    visitor_timezone: str          # input: IANA name from the browser; persisted, so later turns and booking can use it
     retrieved: dict
     retrieval_status: str
     final_text: str
