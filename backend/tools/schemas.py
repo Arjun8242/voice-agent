@@ -1,7 +1,7 @@
 """Argument schemas for the read-only tools, and the structured tool error.
 
 The registry validates the model's arguments against these models, and the
-function declarations sent to Gemini are generated from them, so the schema the
+function declarations sent to the LLM are generated from them, so the schema the
 model sees and the schema code enforces cannot drift apart. getLinks has no
 model here: its allowed types come from links.yaml (see links.py).
 """
@@ -32,6 +32,22 @@ class GetProjectDetailArgs(Args):
     section: str = Field(
         description="One of: Overview, Architecture, Key decisions, Limitations, Testing; or an exact section heading."
     )
+
+
+class CheckAvailabilityArgs(Args):
+    # strings, not dates: the handler parses them, so a bad value comes back to the model as a tool error
+    date_from: str | None = Field(default=None, description="First day to look at, YYYY-MM-DD, in the visitor's timezone. Omit to start today.")
+    date_to: str | None = Field(default=None, description="Last day to look at, YYYY-MM-DD, in the visitor's timezone. Omit to look as far ahead as bookings are allowed.")
+    time_from: str | None = Field(default=None, description="Earliest start time, HH:MM 24-hour, in the visitor's timezone. For 'afternoon' use 12:00. Omit if no time was named.")
+    time_to: str | None = Field(default=None, description="Latest start time, HH:MM 24-hour, in the visitor's timezone. For 'afternoon' use 17:00. Omit if no time was named.")
+
+
+class StartBookingArgs(Args):
+    slot_id: str = Field(description="The slot_id exactly as checkAvailability returned it, for example 2026-11-10T04:30Z.")
+
+
+class CancelBookingArgs(Args):
+    """No arguments: the booking is found from the session, never named by the model."""
 
 
 class GetSkillsArgs(Args):

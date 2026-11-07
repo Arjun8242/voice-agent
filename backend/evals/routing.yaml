@@ -87,15 +87,25 @@
   query: Does he have a portfolio website?
   expect: {tool: getLinks, args: {type: portfolio}}
 
-# --- no tool: meetings, boundaries, off-topic, greetings -------------------
-- id: none-meeting
-  category: no_tool
+# --- booking: free times first; cancel by tool, never by words -------------
+- id: book-next-week
+  category: booking
   query: Can we schedule a call with him next week?
-  expect: {tool: null}
-- id: none-book
-  category: no_tool
+  expect: {tool: checkAvailability}
+- id: book-meeting
+  category: booking
   query: Book a 30 minute meeting with Arjun.
-  expect: {tool: null}
+  expect: {tool: null, ask: true}
+- id: book-tuesday-afternoon
+  category: booking
+  query: Can we meet on Tuesday afternoon?
+  expect: {tool: checkAvailability}
+- id: book-cancel
+  category: booking
+  query: Please cancel my meeting with Arjun.
+  expect: {tool: cancelBooking}
+
+# --- no tool: boundaries, off-topic, greetings -----------------------------
 - id: none-salary
   category: no_tool
   query: What salary is he expecting?

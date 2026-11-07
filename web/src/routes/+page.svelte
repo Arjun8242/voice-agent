@@ -2,9 +2,10 @@
   import { onMount, onDestroy } from 'svelte';
   import { startMic, stopMic } from '$lib/mic';
   import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone, currentSentenceId } from '$lib/playback';
-  import type { Card } from '$lib/cards';
+  import { KEEP_ACROSS_TURNS, type Card } from '$lib/cards';
   import ProjectCard from '$lib/components/ProjectCard.svelte';
   import LinkCard from '$lib/components/LinkCard.svelte';
+  import BookingCard from '$lib/components/BookingCard.svelte';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
   import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -30,6 +31,27 @@
   let micActive = $state(false);
 
   const WS_URL = 'ws://localhost:3001';
+
+  // A newer card for the same booking replaces the older ones (form -> summary -> outcome),
+  // and picking a slot retires the slots list.
+  function placeCard(card: Card) {
+    const bookingId = 'booking_id' in card.data ? card.data.booking_id : null;
+    cards = [
+      ...cards.filter((c) =>
+        c.card_id !== card.card_id
+        && !(bookingId && 'booking_id' in c.data && c.data.booking_id === bookingId)
+        && !(card.type === 'booking_form' && c.type === 'slots')),
+      card,
+    ];
+  }
+
+  // A click on a booking card runs as a turn of its own on the server (graph booking_gate).
+  function sendAction(action: string, payload: Record<string, string>) {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    assistantText = '';
+    status = 'thinking';
+    ws.send(JSON.stringify({ type: 'ui_action', action, payload }));
+  }
 
   // ── WebSocket ─────────────────────────────────────────────────────────────
   function connectWS() {
@@ -78,7 +100,7 @@
           finalText = msg.text;
           partialText = '';
           assistantText = "";
-          cards = [];
+          cards = cards.filter((c) => KEEP_ACROSS_TURNS.has(c.type));
           resetPlayback(audioEl);
           status = 'thinking';
           break;
@@ -89,7 +111,12 @@
 
         case 'ui_card':
           // Same card_id replaces the earlier card instead of showing it twice.
-          cards = [...cards.filter((c) => c.card_id !== msg.card.card_id), msg.card];
+          placeCard(msg.card);
+          break;
+
+        case 'booking_update':
+          // The calendar call's result. It has no turnId, so it arrives even if the turn was cut off.
+          placeCard({ ...msg.card, data: { ...msg.card.data, text: msg.text } });
           break;
 
         case 'metric':
@@ -279,12 +306,14 @@
       </div>
     {/if}
 
-    <!-- Cards from tools (project detail, links) -->
+    <!-- Cards from tools (project detail, links) and booking -->
     {#each cards as card (card.card_id)}
       {#if card.type === 'project_detail'}
         <ProjectCard data={card.data} />
       {:else if card.type === 'link'}
         <LinkCard data={card.data} />
+      {:else}
+        <BookingCard {card} onAction={sendAction} />
       {/if}
     {/each}
 

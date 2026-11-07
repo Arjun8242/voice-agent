@@ -8,15 +8,25 @@ The session id doubles as the checkpointer thread id, so history is per session.
 import time
 from typing import AsyncIterator
 
-async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "", visitor_timezone: str = "") -> AsyncIterator[tuple[str, object]]:
+try:
+    from backend.observability.redact import tracing_callbacks
+except (ImportError, ModuleNotFoundError):
+    from observability.redact import tracing_callbacks
+
+async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "", visitor_timezone: str = "",
+                      ui_action: dict | None = None) -> AsyncIterator[tuple[str, object]]:
     """Yield ("custom", event) as the graph emits them and ("values", state) after each step.
 
     interrupted_reply: what the visitor heard of the previous answer before cutting in.
     visitor_timezone: IANA name from the browser; saved in the checkpoint like the rest of the state.
+    ui_action: a click on a booking card ({action, payload}); text is then "".
     """
 
     config = {"configurable": {"thread_id": session_id}}
-    inputs = {"query": text}
+    callbacks = tracing_callbacks()
+    if callbacks:  # the masked tracer replaces LangChain's default one: no name or email reaches LangSmith
+        config["callbacks"] = callbacks
+    inputs = {"query": text, "ui_action": ui_action}  # always set, so a click never carries over into the next turn
     if visitor_timezone:
         inputs["visitor_timezone"] = visitor_timezone
     if interrupted_reply:
@@ -26,13 +36,13 @@ async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str 
         yield mode, chunk
 
 
-async def run_turn(graph, session_id: str, text: str) -> dict:
+async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = None) -> dict:
     start = time.perf_counter()
     first_token_ms = None
     retrieval: dict ={}
     final: dict = {}
 
-    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text):
+    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text, ui_action = ui_action):
 
         if mode == "custom" and chunk.get("type") == "token" and first_token_ms is None:
             first_token_ms = round((time.perf_counter() - start)*1000, 1)
@@ -51,6 +61,7 @@ async def run_turn(graph, session_id: str, text: str) -> dict:
         "topic_fallback": retrieval.get("topicFallback", False),
         "tool_calls": final.get("tool_calls", []),
         "cards": final.get("cards", []),
+        "booking_execute": final.get("booking_execute"),
         "errors": final.get("errors", []),
         "stage_ms": final.get("stage_ms", {}),
         "first_token_ms": first_token_ms,

@@ -155,9 +155,8 @@ class Calendar(Strict):
     timezone: NonEmpty
 
 
-class MeetingType(Strict):
-    id: Slug
-    title: NonEmpty
+class Meeting(Strict):
+    title: NonEmpty  # default;
     duration_minutes: int = Field(gt=0)
     description: NonEmpty
 
@@ -180,7 +179,6 @@ class BookingRules(Strict):
 
 
 class SchedulingUI(Strict):
-    show_meeting_types: bool
     show_timezone: bool
     show_confirmation: bool
 
@@ -188,7 +186,7 @@ class SchedulingUI(Strict):
 class Scheduling(Strict):
     enabled: bool
     calendar: Calendar
-    meeting_types: list[MeetingType] = Field(min_length=1)
+    meeting: Meeting
     availability: Availability
     booking: BookingRules
     ui: SchedulingUI
@@ -382,9 +380,6 @@ def check_scheduling(kdir: Path, errors: list[str], warnings: list[str]) -> None
         ZoneInfo(sched.calendar.timezone)
     except (ZoneInfoNotFoundError, ValueError):
         errors.append(f"scheduling.yaml.calendar.timezone: '{sched.calendar.timezone}' is not a valid IANA timezone")
-    ids = [m.id for m in sched.meeting_types]
-    for dup in sorted({i for i in ids if ids.count(i) > 1}):
-        errors.append(f"scheduling.yaml: meeting type id '{dup}' is used twice")
     for rule in ("require_explicit_confirmation", "recheck_availability", "prevent_duplicate_bookings"):
         if not getattr(sched.booking, rule):
             errors.append(f"scheduling.yaml.booking.{rule}: must be true (booking safety rule)")

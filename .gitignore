@@ -34,6 +34,7 @@ venv/
 .venv/
 .pytest_cache/
 data/turn_log.jsonl
+data/bookings.db
 
 
 # Local tooling and tests

@@ -32,4 +32,7 @@ class TurnState(TypedDict, total = False):
     tool_steps: int                # tool calls run this turn (cap MAX_TOOL_STEPS)
     tool_calls: list[dict]         # every call this turn with its result, in order
     pending_tool_calls: list[dict] # calls the agent asked for, not yet run
-    cards: list[dict]              # cards for the UI from this turn's tool calls
+    cards: list[dict]
+    offered_slots: list[dict]      # [{slot_id, label}] from the last checkAvailability; kept across turns
+    ui_action: dict | None         # input: a click on a booking card, {action, payload}; the gate clears it
+    booking_execute: dict | None   # {booking_id, kind: create | delete} when a click asked for a calendar call (S15 runs it)

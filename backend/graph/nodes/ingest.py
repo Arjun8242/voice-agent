@@ -25,7 +25,10 @@ def create_ingest_node(aliases: dict[str, str]):
                 # the full answer was already saved (the cut came while it was still being spoken): replace it
                 messages.append(RemoveMessage(id=history[-1].id))
             messages.append(AIMessage(heard))
-        messages.append(HumanMessage(query))
+        click = state.get("ui_action")
+        # a click is recorded by its action only, so the form's name and email never enter the history.
+        # They are in ui_action for this one turn; observability/redact.py masks them in traces.
+        messages.append(HumanMessage(f"(The visitor clicked {click.get('action')} on the booking card.)" if click else query))
         update: dict = {
             "query": query,
             "messages": messages,
@@ -39,6 +42,7 @@ def create_ingest_node(aliases: dict[str, str]):
             "tool_calls": [],
             "pending_tool_calls": [],
             "cards": [],
+            "booking_execute": None,
         }
         mentioned = find_projects(query, aliases)
         if len(mentioned) == 1:

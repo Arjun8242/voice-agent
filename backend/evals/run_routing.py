@@ -1,4 +1,4 @@
-"""S9: run the routing set through the real graph (retriever + Gemini + tools).
+"""S9: run the routing set through the real graph (retriever + LLM + tools).
 
     python -m backend.evals.run_routing [--runs 3] [--file backend/evals/routing.yaml]
 
@@ -22,7 +22,7 @@ import yaml
 DEFAULT_FILE = Path(__file__).resolve().parent / "routing.yaml"
 THRESHOLDS = Path(__file__).resolve().parent / "thresholds.yaml"
 KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
-TOOLS = {"searchProjects", "getProjectDetail", "getSkills", "getLinks"}
+TOOLS = {"searchProjects", "getProjectDetail", "getSkills", "getLinks", "checkAvailability", "startBooking", "cancelBooking"}
 
 
 def load_cases(path: Path) -> list[dict]:
@@ -101,11 +101,17 @@ async def run(cases: list[dict], runs: int) -> list[dict]:
     from backend.graph.runner import run_turn
     from backend.rag.llm import stream_text
     from backend.rag.retriever import init_retriever, project_aliases, retrieve
-    from backend.tools.kb_data import load_kb_data
+    import tempfile
+    from backend.booking.store import BookingStore
+    from backend.gcal import FakeCalendar
+    from backend.tools.kb_data import load_kb_data, load_scheduling
     from backend.tools.registry import build_registry
 
     await init_retriever()
-    graph = build_graph(retrieve, stream_text, project_aliases(), registry=build_registry(load_kb_data(KB_DIR)))
+    # booking tools against the fake calendar and a throwaway table: an eval run never sends a real invite
+    store = BookingStore(Path(tempfile.mkdtemp()) / "routing.db")
+    registry = build_registry(load_kb_data(KB_DIR), calendar=FakeCalendar(), scheduling=load_scheduling(KB_DIR), store=store)
+    graph = build_graph(retrieve, stream_text, project_aliases(), registry=registry)
     results = []
     for case in cases:
         for n in range(runs):

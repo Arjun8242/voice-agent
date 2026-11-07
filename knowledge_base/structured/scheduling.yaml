@@ -1,38 +1,32 @@
-#how booking will work 
+#how booking will work
 #Behind the UI, your Python backend will:
-#1. Read the meeting types and booking rules from scheduling.yaml.
+#1. Read the booking rules from scheduling.yaml (one 30-minute meeting).
 #2. Query the calendar API for genuinely available slots.
 #3. Return structured slot data to the frontend.
-#4. Collect the recruiter's name, email, meeting choice, and selected slot.
+#4. Collect the recruiter's name, email, optional meeting title, and selected slot.
 #5. Ask for explicit confirmation.
 #6. Recheck availability and create the event.
 #7. Return a confirmed booking payload only after successful creation.
 
-enabled: false
+enabled: true
 
 calendar:
   provider: google_calendar
   calendar_id: primary
   timezone: Asia/Kolkata
 
-meeting_types:
-  - id: screening
-    title: Screening Call
-    duration_minutes: 15
-    description: Quick introduction and background
-
-  - id: technical-interview
-    title: Technical Discussion
-    duration_minutes: 30
-    description: Discuss projects and technical experience
+meeting:
+  title: Technical Discussion
+  duration_minutes: 30
+  description: Discuss projects and technical experience
 
 availability:
-  working_days: [mon, tue, wed, thu, fri]       
-  start_time: "10:00"   
-  end_time: "17:00" 
+  working_days: [mon, tue, wed, thu, fri]
+  start_time: "10:00"
+  end_time: "17:00"
   booking_horizon_days: 14
-  min_notice_hours: null
-  buffer_minutes: null
+  min_notice_hours: 12
+  buffer_minutes: 30 
 
 booking:
   require_name: true
@@ -42,6 +36,5 @@ booking:
   prevent_duplicate_bookings: true
 
 ui:
-  show_meeting_types: true
   show_timezone: true
   show_confirmation: true

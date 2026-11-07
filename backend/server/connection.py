@@ -56,11 +56,12 @@ def valid_timezone(name: object) -> str:
         return DEFAULT_TIMEZONE
 
 
-async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph: Any) -> None:
+async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph: Any, executor: Any = None) -> None:
     """Handle one WebSocket connection from accept() to disconnect.
 
     graph is the compiled agent graph. The connection id is its thread id, so the
     checkpointer keeps the conversation history per connection.
+    executor is the BookingExecutor (booking/execute.py), or None while booking is disabled.
     """
     await ws.accept()
     print("[server] Client connected")
@@ -91,18 +92,40 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     )
 
     # -------------------------------------------------------------------------
+    # Booking calls — owned by the connection, not the turn, so a cut-in cannot stop one halfway
+    # or hide its result. booking_update has no turnId, so the browser never drops it as stale.
+    # -------------------------------------------------------------------------
+    booking_tasks: set[asyncio.Task] = set()  # keeps a reference so a running call is not garbage-collected
+
+    def start_booking_execute(event: dict) -> None:
+        async def run() -> None:
+            try:
+                update = await executor.run(event["booking_id"], event["kind"])
+                if update:
+                    await send("booking_update", update)
+            except Exception as err:  # the visitor may have left; the booking itself is already decided
+                print(f"[booking] {err}")
+
+        if executor is not None:
+            task = asyncio.get_running_loop().create_task(run())
+            booking_tasks.add(task)
+            task.add_done_callback(booking_tasks.discard)
+
+    # -------------------------------------------------------------------------
     # Turn launcher — creates a fresh interrupt_event for each turn.
     # -------------------------------------------------------------------------
-    def launch_turn(text: str) -> None:
+    def launch_turn(text: str, ui_action: dict | None = None) -> None:
         nonlocal interrupt_event, turn_id
         interrupt_event = asyncio.Event()   # fresh per turn
         turn_id += 1
-        # end of speech -> final transcript; None if STT sent the final before its speech-end event
-        ended = conv.speech_ended_at
-        conv.speech_ended_at = None
-        timings = {"turn_id": turn_id, "stt_ms": round((time.perf_counter() - ended) * 1000, 1) if ended else None}
+        timings = None  # a click has no speech to time, and must not skew the latency report
+        if ui_action is None:
+            # end of speech -> final transcript; None if STT sent the final before its speech-end event
+            ended = conv.speech_ended_at
+            conv.speech_ended_at = None
+            timings = {"turn_id": turn_id, "stt_ms": round((time.perf_counter() - ended) * 1000, 1) if ended else None}
 
-        task = asyncio.create_task(_run_turn(text, conv, with_turn_id(send, turn_id), interrupt_event, timings))
+        task = asyncio.create_task(_run_turn(text, conv, with_turn_id(send, turn_id), interrupt_event, timings, ui_action))
         start_turn(conv, task)
 
     async def _run_turn(
@@ -110,13 +133,16 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         conv: Conversation,
         send,
         ev: asyncio.Event,
-        timings: dict,
+        timings: dict | None,
+        ui_action: dict | None,
     ) -> None:
         try:
             waited = time.perf_counter()
             heard = await take_heard(conv)  # what the visitor heard of a cut-off answer, if the last turn was one
-            timings["wait_ms"] = round((time.perf_counter() - waited) * 1000, 1)
-            await voice_turn(text, conv, send, ev, tts_client, graph, session_id, heard, timings, visitor_timezone=visitor_timezone)
+            if timings is not None:
+                timings["wait_ms"] = round((time.perf_counter() - waited) * 1000, 1)
+            await voice_turn(text, conv, send, ev, tts_client, graph, session_id, heard, timings,
+                             visitor_timezone=visitor_timezone, ui_action=ui_action, on_booking_execute=start_booking_execute)
         except Exception as err:  # CancelledError is not an Exception: a barge-in ends the task as cancelled
             print(f"[voiceTurn] {err}")
         finally:
@@ -129,7 +155,9 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         """playback_progress: the sentence that was playing when the answer was cut off.
         playback_ended: the answer's audio finished, so speech from now on is not a barge-in.
         session_start: the first message of a page load. Carries the id the browser kept (so a refresh
-        continues the same graph thread) and the visitor's timezone."""
+        continues the same graph thread) and the visitor's timezone.
+        ui_action: a click on a booking card, {action, payload}. It runs as a turn of its own through the
+        graph's booking_gate; the gate checks every field, so only the shape is checked here."""
         nonlocal session_id, visitor_timezone
         try:
             data = json.loads(raw)
@@ -145,6 +173,12 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
                 session_id = old
             visitor_timezone = valid_timezone(data.get("timezone"))
             asyncio.get_running_loop().create_task(send("session", {"sessionId": session_id}))  # the browser stores this
+        elif isinstance(data, dict) and data.get("type") == "ui_action":
+            action, payload = data.get("action"), data.get("payload") or {}
+            if isinstance(action, str) and isinstance(payload, dict):
+                if is_answering(conv):
+                    do_interrupt()  # a click while the agent talks replaces the answer, as speech would
+                launch_turn("", {"action": action, "payload": payload})
 
     # -------------------------------------------------------------------------
     # STT client

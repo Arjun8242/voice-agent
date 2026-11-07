@@ -13,11 +13,11 @@ from pathlib import Path
 try:
     from kb.ingest import split_sections
     from kb.loaders import read_text, split_front_matter
-    from kb.validate import Experience, Link, Project, Skill, parse_list
+    from kb.validate import Experience, Link, Project, Scheduling, Skill, parse_list, parse_object
 except (ImportError, ModuleNotFoundError):
     from backend.kb.ingest import split_sections
     from backend.kb.loaders import read_text, split_front_matter
-    from backend.kb.validate import Experience, Link, Project, Skill, parse_list
+    from backend.kb.validate import Experience, Link, Project, Scheduling, Skill, parse_list, parse_object
 
 
 @dataclass
@@ -41,6 +41,14 @@ def project_sections(markdown: str) -> dict[str, str]:
         if text:
             parts.append(text)
     return {heading: "\n\n".join(parts) for heading, parts in sections.items()}
+
+
+def load_scheduling(kdir: Path) -> Scheduling:
+    errors: list[str] = []
+    sched, _ = parse_object(kdir / "structured" / "scheduling.yaml", Scheduling, errors)
+    if sched is None:
+        raise ValueError("scheduling.yaml failed validation: " + "; ".join(errors))
+    return sched
 
 
 def load_kb_data(kdir: Path) -> KbData:

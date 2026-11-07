@@ -10,7 +10,7 @@ import os
 import secrets
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from .runner import run_turn
 
 
@@ -18,8 +18,21 @@ TURN_TIMEOUT = 30
 
 router = APIRouter(prefix="/internal")
 
+class UiAction(BaseModel):
+    action: str = Field(min_length = 1, max_length = 40)
+    payload: dict = {}
+
+
 class TurnInput(BaseModel):
-    text: str = Field(min_length = 1, max_length = 200)
+    """Speech text, or a click on a booking card: exactly one."""
+    text: str | None = Field(default = None, min_length = 1, max_length = 200)
+    ui_action: UiAction | None = None
+
+    @model_validator(mode = "after")
+    def one_kind(self):
+        if (self.text is None) == (self.ui_action is None):
+            raise ValueError("give exactly one of text or ui_action")
+        return self
 
 
 class TurnRequest(BaseModel):
@@ -42,7 +55,13 @@ async def turn(body: TurnRequest, request: Request, API_KEY: str | None = Header
     if graph is None:
         raise HTTPException(503, "graph is not initialised")
     try:
-        return await asyncio.wait_for(run_turn(graph, session_id=body.session_id, text=body.input.text), TURN_TIMEOUT)
+        click = body.input.ui_action.model_dump() if body.input.ui_action else None
+        result = await asyncio.wait_for(run_turn(graph, session_id=body.session_id, text=body.input.text or "", ui_action=click), TURN_TIMEOUT)
+        executor = getattr(request.app.state, "executor", None)
+        if result["booking_execute"] and executor is not None:  # no voice here: run the calendar call inline, so evals see the outcome
+            handoff = result["booking_execute"]
+            result["booking_update"] = await asyncio.wait_for(executor.run(handoff["booking_id"], handoff["kind"]), TURN_TIMEOUT)
+        return result
 
     except asyncio.TimeoutError:
         raise HTTPException(504, f"turn exceeded {TURN_TIMEOUT}s")

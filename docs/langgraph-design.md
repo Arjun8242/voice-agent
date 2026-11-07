@@ -42,9 +42,9 @@ Agent graph (LangGraph)
                           '--> booking path (gate, execute)
       |               |                 |
       v               v                 v
- Knowledge store   Postgres + Redis   Calendar adapter
- (YAML + index)    (checkpoints,      (Google; fake in tests)
-                    bookings, holds)
+ Knowledge store   SQLite             Calendar adapter
+ (YAML + index)    (session ->        (Google API; fake in tests)
+                    booking, event)
 
 LangSmith <-- traces from every graph run
 Eval runner --> POST /internal/turn (text mode, no voice)
@@ -72,10 +72,11 @@ Eval runner --> POST /internal/turn (text mode, no voice)
 | `transcript.partial` / `transcript.final` | server to client | turn\_id, text |
 | `playback.progress` | client to server | turn\_id, played\_ms |
 | `ui.card` / `ui.card.dismiss` | server to client | turn\_id, card\_id, type, data |
-| `ui.action` | client to server | action (select\_slot, submit\_details, confirm, cancel), payload |
+| `ui.action` | client to server | action (select\_slot, submit\_details, confirm, cancel\_booking, confirm\_cancel, keep\_booking), payload |
+| `booking.update` | server to client | booking\_id, status, card data; no turn\_id |
 | `turn.cancelled` / `error` | server to client | turn\_id / code, message, retryable |
 
-Every server event carries `turn_id`. The client drops events from turns at or before the last `turn.cancelled`, so a card from an interrupted request never appears late.
+Every turn event carries `turn_id`. The client drops events from turns at or before the last `turn.cancelled`, so a card from an interrupted request never appears late. Session-level events (`session.ready`, `booking.update`) carry no `turn_id` and always pass that guard: a booking result must reach the visitor even when the turn that started it was cut off. `booking.update` carries booking\_id and status, and the client renders it by booking\_id, so a repeat changes nothing.
 
 ### 3.3 Internal endpoints (evals and admin)
 
@@ -87,23 +88,23 @@ The voice path calls the graph in the same process, so there is no internal stre
 | `POST /internal/kb/reindex` | Rebuilds the index (also available as a CLI command) |
 | `GET /health` | Liveness |
 
-Public REST (linked from the calendar invite): `GET /api/bookings/{id}?token=` for status, `POST /api/bookings/{id}/cancel?token=` to cancel.
+There is no public booking REST in this version. A recruiter can decline or remove the meeting from the Google invite.
 
 ### 3.4 Data stores
 
 | Store | Holds |
 | --- | --- |
-| Postgres | LangGraph checkpoints (thread\_id = session\_id); tables bookings, fallback\_messages, turn\_log |
-| Redis | Slot holds (`SET hold:<slot_start> <booking_id> NX EX 600`), rate-limit counters, embedding cache |
-| Files | Knowledge files and the built index (vectors; BM25 only if adopted later), loaded into memory at startup |
+| SQLite (`data/bookings.db`) | One table, `bookings`. No server and no extra service |
+| In memory | LangGraph checkpoints (thread\_id = session\_id), as today (`InMemorySaver`) |
+| Files | Knowledge files and the built index (vectors; BM25 only if adopted later), loaded into memory at startup; `data/turn_log.jsonl` |
 
-`bookings`: id, session\_id, slot\_start\_utc, slot\_end\_utc, visitor\_name, visitor\_email, visitor\_tz, status, idempotency\_key (unique), calendar\_event\_id, failure\_reason, created\_at, confirmed\_at. `turn_log`: session\_id, turn\_id, route, tools, stage\_ms (JSON), created\_at.
+`bookings`: booking\_id (`uuid4().hex`; it is also the Google event id), session\_id, slot\_start\_utc, visitor\_name, visitor\_email, meeting\_title, visitor\_tz, status, created\_at. Google is the calendar of record: it stores the event, emails the invite and shows the busy times. The table only remembers who booked what in this session. The slot is always 30 minutes, so there is no end column.
 
 ## 4. LangGraph design
 
 ### 4.1 State
 
-One state object per session, checkpointed to Postgres after each step.
+One state object per session, checkpointed in memory after each step; the booking itself lives in SQLite.
 
 | Field | Meaning |
 | --- | --- |
@@ -116,7 +117,7 @@ One state object per session, checkpointed to Postgres after each step.
 | `tool_steps` | Tool calls used this turn (cap 4) |
 | `cards` | Cards to emit this turn |
 | `offered_slots` | Slots shown to this visitor; only these can be started |
-| `booking` | id, status, slot\_id, name, email, hold\_expires\_at, or empty |
+| `booking` | booking\_id, status, slot\_id, name, email, or empty |
 | `final_text`, `errors` | Output for TTS and any failures |
 
 ### 4.2 Nodes
@@ -124,11 +125,11 @@ One state object per session, checkpointed to Postgres after each step.
 | Node | Type | Does |
 | --- | --- | --- |
 | `ingest_turn` | code | Appends the input, resets per-turn fields, updates topic, picks the next node |
-| `booking_gate` | code | Handles input while a booking is waiting: form submit, confirm, cancel |
+| `booking_gate` | code | Handles input while a booking is waiting: form submit, confirm, cancel, and the yes or no to a cancel request |
 | `retrieve` | code | Topic-aware dense search with a relevance threshold (hybrid only if later tests justify it) |
 | `agent` | LLM | One Gemini call with tools bound; returns text or tool calls |
 | `tools` | code | Validates and runs tool calls (read-only ones in parallel), adds cards |
-| `booking_execute` | code, shielded | Re-checks the slot, creates the event, reads it back |
+| `booking_execute` | code, session-owned task | Starts the create (re-check, read event by id, create, read back) or the delete of a confirmed booking, and reports through `booking.update` (section 4.5) |
 | `respond` | code | Chooses the model's text, or a template for booking outcomes; streams it |
 
 ### 4.3 Edges
@@ -136,10 +137,10 @@ One state object per session, checkpointed to Postgres after each step.
 | From | Condition | To |
 | --- | --- | --- |
 | START | always | `ingest_turn` |
-| `ingest_turn` | booking is awaiting\_details or awaiting\_confirmation | `booking_gate` |
+| `ingest_turn` | booking is awaiting\_details, awaiting\_confirmation or awaiting\_cancel\_confirmation | `booking_gate` |
 | `ingest_turn` | otherwise | `retrieve` |
-| `booking_gate` | confirm recognised | `booking_execute` |
-| `booking_gate` | cancel, or details received | `respond` |
+| `booking_gate` | confirm (or confirm\_cancel) recognised | `booking_execute` |
+| `booking_gate` | cancel before confirmation, keep\_booking, or details received | `respond` |
 | `booking_gate` | anything else (the visitor asked something unrelated) | `retrieve`; the prompt notes a booking is pending |
 | `retrieve` | always | `agent` |
 | `agent` | tool calls and tool\_steps < 4 | `tools` |
@@ -150,14 +151,14 @@ One state object per session, checkpointed to Postgres after each step.
 
 ### 4.4 Pause and resume
 
-Waiting for the visitor does not suspend a run. The run ends with the booking status saved in the checkpoint, and the next input (a form submit, a click, or speech) starts a new run on the same `thread_id`, where `ingest_turn` routes to `booking_gate`. This keeps state inspectable and survives refreshes and reconnects. LangGraph's interrupt() is an alternative; verify its current behaviour in the docs before choosing it.
+Waiting for the visitor does not suspend a run. The run ends with the booking status saved in SQLite, and the next input (a form submit, a click, or speech) starts a new run on the same `thread_id`, where `ingest_turn` routes to `booking_gate`. This keeps state inspectable and survives refreshes and reconnects. LangGraph's interrupt() is an alternative; verify its current behaviour in the docs before choosing it.
 
 ### 4.5 Streaming, cancellation, and guarantees
 
 - Tokens from the agent node stream to the turn manager as produced; it cuts sentences for TTS. Verify LangGraph's current streaming modes in its docs.
 - A cancel signal stops the run's async task. Events carry `turn_id`, so late output is discarded.
-- `booking_execute` is shielded: after confirmation it runs to completion even if the visitor interrupts, because a half-finished booking is worse than a finished one. The result appears as a card.
-- The model cannot confirm a booking. Confirmation reaches the graph only as a `ui_action` click or a transcript the turn manager matches against a strict confirm or cancel set.
+- Execution is a session-owned task, not part of the turn. `asyncio.shield` alone is not enough: it keeps the create-event call alive, but the stream consumer that would deliver the result is cancelled with the turn, and the client drops any event whose `turnId` is at or before the cancelled turn. So `booking_execute` hands the work to a task owned by the connection. When it finishes, the task sends `booking.update` through the connection's raw `send` with no `turn_id` (the way `session_ready` is sent). It runs to completion even if the visitor interrupts, because a half-finished booking is worse than a finished one. The barge-in timelines include a cut-in during `executing`.
+- The model may start things but never confirm or execute them. `startBooking` and `cancelBooking` only move a booking to a waiting state. Confirmation reaches the graph only as a `ui_action` click or a transcript the turn manager matches against a strict confirm or cancel set.
 
 ### 4.6 Where LangGraph earns its place
 
@@ -174,7 +175,8 @@ The answer-or-tool loop alone is about 100 lines of plain code. LangGraph is jus
 | `getSkills` | skill? | All skills, or the evidence for one | none |
 | `getLinks` | type (portfolio, github, coding, resume) | URL; emits a card | none |
 | `checkAvailability` | date\_from, date\_to | Up to 5 slots in the visitor's timezone | none |
-| `startBooking` | slot\_id, topic? | booking\_id, status awaiting\_details; emits a form card | Pending booking and a 10-minute hold; nothing external |
+| `startBooking` | slot\_id, topic? | booking\_id, status awaiting\_details; emits a form card | One pending row in SQLite; nothing external, and the slot is not reserved (section 7.1) |
+| `cancelBooking` | none | status awaiting\_cancel\_confirmation, or released; emits a confirm card | Finds this session's booking by `session_id` in SQLite (not from graph state). Before confirmation it just drops the pending row. For a confirmed booking it only asks; the delete runs after the visitor's click |
 
 Execution pipeline for every call: look up in the registry, validate arguments against the schema (pydantic), check preconditions (the slot\_id must be in `offered_slots`), run with a per-tool timeout, return a result or a structured error to the model, count the step. The tool list the model sees changes with state. Read-only calls may run in parallel. The visitor's timezone and today's date come from the session and system prompt, never from model arithmetic. Each description names both when to use the tool and which neighbouring tool to use instead.
 
@@ -223,10 +225,13 @@ knowledge/
 # scheduling.yaml
 timezone: <IANA timezone>
 working_hours: {mon-fri: ['10:00', '18:00']}
-duration_min: 30
-buffer_min: 15
+meeting:
+  title: <default title>  # used when the visitor does not type one
+  duration_minutes: 30    # the only meeting; slots sit on a 30-minute grid
+  description: <one line>
 min_notice_hours: 12
 max_days_ahead: 14
+buffer_minutes: 30        # free time kept after every busy time
 ```
 
 ### 6.4 Project doc template
@@ -274,34 +279,58 @@ Retrieval is evaluated and tuned under the separate retrieval engineering plan, 
 
 ## 7. Booking workflow
 
-States: `slots_offered`, `slot_held`, `awaiting_details`, `awaiting_confirmation`, `executing`, `confirmed`. Exits: `expired`, `cancelled`, `failed`. Until `executing` the visitor can back out. After confirmation, `executing` is the point of no return.
+Google Calendar is the calendar. It stores the events, shows the busy times, emails the invite and the cancellation, and can add a Meet link. Our code does four small things: turn Google's busy times into bookable slots, run a confirm-before-book flow, call the Google API safely, and cancel. There is no Postgres, Redis, Docker, holds table or lock. A small SQLite table remembers which booking and which Google event belong to which session.
+
+There is one meeting: 30 minutes. The rules live in `scheduling.yaml`: working days and hours, the 30-minute length, 12 hours of minimum notice, a 14-day horizon, and a 30-minute buffer kept free after every busy time. Slots sit on a 30-minute grid, shown in the visitor's timezone (`compute_slots` in `backend/booking/availability.py`, a pure function). If a rule is `null`, `compute_slots` raises an error instead of guessing a default. The meeting title is not fixed in advance: the visitor may type one in the details form, and `meeting.title` is only the default used when they leave it blank.
+
+States: `awaiting_details`, `awaiting_confirmation`, `executing`, `confirmed`, `awaiting_cancel_confirmation`. Exits: `cancelled`, `failed`. `slots_offered` lives only in graph state (`offered_slots`); no row exists until `startBooking`. A pending booking (`awaiting_details`, `awaiting_confirmation`) reserves nothing, so abandoning it needs no cleanup: `startBooking` replaces the session's pending row. `executing` (create) is the point of no return. A delete is safe to repeat, because Google treats an already-deleted event as success, so it needs no marker state: delete first, then mark `cancelled`. From `awaiting_cancel_confirmation` the booking returns to `confirmed` on keep\_booking or on any unrelated input.
 
 | Step | Visitor | System |
 | --- | --- | --- |
-| 1 | 'Can we meet next week?' | `checkAvailability`: free/busy minus buffers and non-working hours, shown in the visitor's timezone as a card |
-| 2 | Taps a slot or says it; speech must match an offered slot | `startBooking`: re-check, pending booking, Redis hold (10 min) |
-| 3 | Types name and email in a form | Validate and store (typed, because speech recognition mangles emails) |
+| 1 | 'Can we meet next week?' | `checkAvailability`: Google free/busy turned into slots, shown in the visitor's timezone as a card |
+| 2 | Taps a slot or says it; speech must match an offered slot | `startBooking`: the slot must be in `offered_slots` and still free; one SQLite row, status `awaiting_details`. Nothing external, nothing reserved |
+| 3 | Types name, email and an optional meeting title in a form | Validate and store (typed, because speech recognition mangles emails). The title is trimmed, capped at 80 characters and stripped of line breaks, because it goes into the calendar invite; blank means the default |
 | 4 | Sees the summary card: day, time with timezone, duration, invite email | Status `awaiting_confirmation`; nothing has happened yet |
-| 5 | Taps Confirm or says yes | `booking_execute`: re-verify hold and free/busy, create the event with a deterministic id, read it back |
-| 6 | Sees the confirmed card | Status `confirmed`; the invite goes out; the spoken line is a template filled from stored data |
+| 5 | Taps Confirm or says yes | `booking_execute` (section 7.1): re-check the slot, read the event by its id, create it if absent, read it back |
+| 6 | Sees the confirmed card | Status `confirmed`; Google sends the invite; the spoken line is a template filled from stored data, sent only after Google confirms |
+| 7 | 'Cancel my meeting' | `cancelBooking` finds this session's booking and moves it to `awaiting_cancel_confirmation`. The visitor taps Confirm cancel; `booking_execute` deletes the event, status `cancelled` |
 
-Components: booking service (owns the state machine, the only code that touches the calendar), availability (`scheduling.yaml` plus free/busy), calendar adapter (`freeBusy`, `createEvent`, `getEvent`, `deleteEvent`; a Google implementation plus an in-memory fake for tests), Postgres `bookings`, Redis holds.
+Components: `backend/gcal/` (the calendar adapter: `adapter.py` interface, `fake.py` for tests with failure injection, `google.py` using httpx and an OAuth refresh token from `.env`; `CALENDAR_BACKEND=fake|google` picks one), `backend/booking/availability.py` (slots), the booking flow (state machine, gate, execute, templates) and `store.py` (the SQLite table).
+
+### 7.1 Safe confirm and idempotency
+
+- **The status change is the guard.** Confirm runs `UPDATE bookings SET status = 'executing' WHERE booking_id = :id AND status = 'awaiting_confirmation'`. SQLite applies it atomically; if no row changed, this booking was already confirmed or is being confirmed, and the stored result is returned. A double click or a reconnect replay therefore creates one event.
+- **Re-check at confirm.** Fresh free/busy goes through `compute_slots` again. If the slot is gone, the visitor is told it was just taken and is offered fresh slots.
+- **Our own event id.** The booking id is `uuid4().hex` and is also the Google event id. It is valid as is: lowercase a to v and 0 to 9, 5 to 1024 characters. Google does not guarantee that an id collision is detected at creation, so never depend on a 409. Every attempt calls `get_event(id)` first and creates only if it is absent.
+- **A timeout is not a failure.** Never retry blindly: read the event by its id. If it exists the booking is confirmed; if not, retry once, then `failed` with a plain message that points to the contact link.
+- **Known limit (a shortcut).** There is no hold or lock, so two visitors who confirm the same slot within the same few milliseconds could both pass the re-check. Normally the second confirm sees the first visitor's event in free/busy and is told the slot was taken. Upgrade if it ever matters: a unique index on the slot start for live rows in `bookings`.
+
+### 7.2 Cancellation
+
+- The agent can cancel only the booking for the current session, found in SQLite by `session_id`, not from graph state. The session id is a random value the browser stores; treat it as a bearer secret.
+- It is two steps. `cancelBooking` only moves the booking to `awaiting_cancel_confirmation` and emits a confirm card. A click (`confirm_cancel`) or a strict spoken yes runs the delete. A misheard word cannot delete a meeting.
+- A pending booking (before confirm) is just dropped; there is no calendar call.
+- A confirmed booking is deleted through the adapter (Google emails the cancellation). A 404 or 410 from Google counts as success. A second cancel returns 'already cancelled'.
+- A booking from an earlier session cannot be cancelled through the agent in this version. The recruiter can decline or remove it from the Google invite.
+
+### 7.3 Execution outlives the turn
+
+`booking_execute` runs as a task owned by the connection and reports with `booking.update` (section 4.5). If the visitor interrupts during `executing`, the create still finishes and the confirmed card still appears.
 
 Edge cases:
 
 | Problem | Handling |
 | --- | --- |
-| Ambiguous time or timezone | Timezone from the browser; backend echoes resolved ISO dates; the agent reads them back; bookings use slot ids, not free text |
-| Slot taken between offer and confirm | Re-check at `startBooking` and at execution; offer fresh slots |
-| Two visitors, one slot | Redis NX hold plus a unique constraint on slot start |
-| Double yes, retry, reconnect replay | Deterministic event id plus unique `idempotency_key`; the second attempt returns the existing booking |
-| Barge-in during `executing` | Execution is shielded and finishes; before confirmation, barge-in only stops speech |
-| Calendar timeout, outcome unknown | Never retry blindly: look up the event by its id; if it exists it is confirmed, otherwise retry once, then `failed` |
-| Calendar down | `failed`, a plain message, and a fallback 'leave a message' saved to `fallback_messages` |
+| Ambiguous time or timezone | Timezone from the browser; the backend echoes resolved ISO dates; the agent reads them back; bookings use slot ids, not free text |
+| Slot taken between offer and confirm | Re-checked at `startBooking` and again at confirm; offer fresh slots |
+| Double yes, retry, reconnect replay | The status change (7.1) lets one through; the others get the stored result; `get_event(id)` runs before any create |
+| Barge-in during `executing` | The session-owned task finishes and sends `booking.update` with no `turn_id`; before confirmation, barge-in only stops speech |
+| Calendar timeout, outcome unknown | Read the event by its id; if it exists it is confirmed, otherwise retry once, then `failed` |
+| Calendar down | `failed`, a plain message, and the contact link |
 | Model claims success without a booking | Success wording comes only from templates driven by booking status |
-| Abandoned or refreshed session | The hold expires and frees the slot; a reconnect resumes from the checkpoint or reports expiry |
-| Bots and spam | Rate limits per IP and session, a cap on open holds, a daily limit per email, optional captcha |
-| Prompt injection | The model has no booking tool beyond `startBooking`; every call is validated; the state machine rejects out-of-order actions |
+| Abandoned or refreshed session | A pending row reserves nothing, so there is nothing to release; a reconnect resumes the session's row |
+| Bots and spam | Rate limits per IP and session; one pending booking per session |
+| Prompt injection | The model may start things (`startBooking`, `cancelBooking`) but never confirm or execute; every call is validated; the state machine rejects out-of-order actions |
 | Calendar privacy | Only free/busy is read; event titles never reach the model |
 
 ## 8. Observability with LangSmith
@@ -322,7 +351,7 @@ Edge cases:
 | Routing and tool arguments | Right route and tool; ambiguous cases ask | 15 to 40 |
 | Multi-turn | Follow-ups keep the topic | 10 |
 | Booking | Final state, event count, no duplicates, honest failure; calendar fakes inject timeouts and conflicts | 12 to 15 |
-| Barge-in | Scripted timelines: speech start, tool begins, interrupt arrives | 6 to 8 |
+| Barge-in | Scripted timelines: speech start, tool begins, interrupt arrives, interrupt during `executing` (the confirmed card must still arrive) | 6 to 8 |
 
 ```yaml
 - id: book-014
@@ -353,9 +382,9 @@ voice-agent/
     kb/                existing: loaders, validate, ingest
     graph/             state.py, builder.py, nodes/
     prompts/           system.md, tool_descriptions.yaml
-    booking/           state_machine.py, gate.py, execute.py, availability.py, holds.py, templates.py
-    tools/             registry.py, schemas.py, search_projects.py, project_detail.py, skills.py, links.py, ...
-    calendar/          adapter.py, google.py, fake.py
+    booking/           availability.py, store.py (SQLite table and the allowed status changes), gate.py, execute.py (create and cancel), templates.py
+    tools/             registry.py, schemas.py, search_projects.py, project_detail.py, skills.py, links.py, check_availability.py, start_booking.py, cancel_booking.py, ...
+    gcal/              adapter.py, fake.py, google.py (named gcal so it cannot shadow Python's calendar module)
     observability/     tracing.py, redact.py, timings.py
     tests/
   data/            existing data files (confirm contents in the Phase 0 audit)
@@ -364,14 +393,14 @@ voice-agent/
     cases/         retrieval/ grounding/ routing/ multiturn/ booking/ bargein/
     runner.py judge.py report.py thresholds.yaml
     reports/       one file per run, named by git sha
-  infra/           docker-compose.yml (postgres, redis, backend), .env.example
+  .env.example
 ```
 
 ## 11. Sub-problems and build order
 
 | ID | Sub-problem | Done when |
 | --- | --- | --- |
-| S1 | Scaffold the new modules, docker-compose (Postgres, Redis), env | Services start; the converted backend's voice flow passes a smoke test |
+| S1 | Scaffold the new modules and env (no extra services) | The converted backend's voice flow passes a smoke test |
 | S2 | Author the knowledge files | Every project has a doc and a status; skills have evidence |
 | S3 | Validate the knowledge files | Ingest fails on a missing status or evidence id |
 | S4 | Ingest: chunk, embed, BM25, persist | The index builds reproducibly; `kb_version` is recorded |
@@ -384,8 +413,8 @@ voice-agent/
 | S11 | Turn manager to graph integration, in-process streaming to TTS | Speech in, streamed speech out |
 | S12 | Cancellation and barge-in safety | Interrupt timelines show no stale cards or duplicate actions |
 | S13 | Availability and calendar adapter plus fake | Slots are computed correctly across timezones |
-| S14 | Booking state machine and gate | Every transition is tested, including exits |
-| S15 | Idempotent, verified execute plus fallback | Fault-injection runs show zero duplicates and zero false 'booked' |
+| S14 | Booking state machine, SQLite store and gate, including the cancel states | Every transition is tested, including exits and a double confirm |
+| S15 | Confirm and cancel against the fake, then Google; a session-owned task | Fault-injection runs (timeouts, conflicts) show zero duplicates and zero false 'booked'; a cut-in during `executing` still delivers the confirmed card |
 | S16 | Tracing, redaction, timings | Every run is traced; the p50 and p95 report works |
 | S17 | Eval harness, judge calibration, regression history | One command; the judge agrees with your labels |
 | S18 | Demo video, README, write-up | A stranger understands it in 90 seconds |
@@ -399,7 +428,7 @@ Order: Phase 0 (S1). Phase 1, knowledge base and retrieval v1 (S2 to S6). Phase 
 | Graph overhead adds latency | Time every stage; compare against a plain loop |
 | The judge model is unreliable | Calibrate on hand-labelled answers; prefer code checks |
 | The agent invents or overclaims | Status tags, similarity threshold, unanswerable evals |
-| Cancellation races | `turn_id` guard everywhere; shielded execute |
+| Cancellation races | `turn_id` guard on turn events; execute and cancel run as a session-owned task that reports through `booking.update` with no `turn_id` |
 | Visitor data in traces | Redaction before send |
 | Scope creep | Hold to the non-goals; add a second agent or a reranker only when evals show a failure |
 | Content work underestimated | Treat S2 and S17 as first-class tasks |

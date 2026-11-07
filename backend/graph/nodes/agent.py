@@ -1,4 +1,4 @@
-"""agent node: one Gemini call with the tools bound, streamed piece by piece.
+"""agent node: one LLM call with the tools bound, streamed piece by piece.
 
 generate_fn yields str pieces (answer text) and dict pieces (a tool call:
 {"name", "args"}). Text leaves the node as custom stream events the moment it
@@ -12,8 +12,10 @@ CancelledError is never caught here, so a barge-in stops the call immediately.
 
 import json
 import time
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from langgraph.config import get_stream_writer
 from .tools import MAX_TOOL_STEPS
 
@@ -61,6 +63,13 @@ def build_prompt(state: dict, tools_offered: bool = False) -> str:
         conversations.append("Tool calls you made this turn and their results (facts you may state about Arjun):\n\n" + "\n\n".join(_tool_call(c) for c in calls))
         if not tools_offered:
             conversations.append("You have used all tool calls for this turn. Answer from the facts above.")
+    #for model to know the context of the conveerstation, we give offered_slots and visitor_timezone
+    if state.get("offered_slots"):
+        offered = "\n".join(f"{s['slot_id']} = {s['label']}" for s in state["offered_slots"])
+        conversations.append("Times you offered the visitor (pass the slot_id to startBooking when they pick one):\n" + offered)
+    tz = state.get("visitor_timezone")
+    if tz:  # the model must not guess today's date; it needs it to turn 'next week' into dates
+        conversations.append(f"Today is {datetime.now(ZoneInfo(tz)):%A %d %B %Y}; the visitor's timezone is {tz}.")
     conversations.append(f"Visitor's latest message: {state['query']}")
     return "\n\n".join(conversations)
 

@@ -1,36 +1,39 @@
-"""llm.py: the Gemini client, its warm-up, and the streaming call the graph's agent node uses.
+"""llm.py: the Groq client, its warm-up, and the streaming call the graph's agent node uses.
 
-The prompt and tool declarations are built in backend/graph; this file only talks to Gemini.
+The prompt and tool declarations are built in backend/graph; this file only talks to Groq.
 """
 
+import json
 from typing import AsyncIterator
 
-from google import genai
-from google.genai import types
+from groq import AsyncGroq
 
 try:
-    from config import GEMINI_API_KEY, GEMINI_MODEL
+    from config import GROQ_API_KEY, GROQ_MODEL
 except (ImportError, ModuleNotFoundError):
-    from backend.config import GEMINI_API_KEY, GEMINI_MODEL
+    from backend.config import GROQ_API_KEY, GROQ_MODEL
+
+MAX_OUTPUT_TOKENS = 512
+REASONING_EFFORT = "low"
+
+_client: AsyncGroq | None = None
 
 
-_client: genai.Client | None = None
-
-
-def _get_client() -> genai.Client:
+def _get_client() -> AsyncGroq:
     global _client
 
     if _client is None:
-        _client = genai.Client(api_key=GEMINI_API_KEY)
+        _client = AsyncGroq(api_key=GROQ_API_KEY)
 
     return _client
 
 async def warm_llm() -> None:
     try:
-        await _get_client().aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents="Hi",
-            config=types.GenerateContentConfig(max_output_tokens=5),
+        await _get_client().chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "user", "content": "Hi"}],
+            max_completion_tokens=MAX_OUTPUT_TOKENS,
+            reasoning_effort=REASONING_EFFORT,
         )
     except Exception as err:
         print(f"[llm] warm-up failed: {err}")
@@ -41,49 +44,44 @@ async def stream_text(
     system_instruction: str,
     tools: list[dict] | None = None,
 ) -> AsyncIterator[str | dict]:
-    """Yield Gemini output as it arrives. Used by the graph's agent node.
+    """Yield Groq output as it arrives. Used by the graph's agent node.
 
-    Text parts are yielded as str; tool calls as {"name": ..., "args": {...}} dict.
-    tools are declarations {name, description, parameters (JSON schema)}; 
+    Text is yielded as str; each tool call, once its arguments are complete, as {"name": ..., "args": {...}}.
+    tools are declarations {name, description, parameters (JSON schema)}.
     """
-    tool_config = {}
+    extra = {}
     if tools:
-        tool_config = {
-            "tools": [types.Tool(function_declarations=[
-                types.FunctionDeclaration(name=t["name"], description=t["description"], parameters_json_schema=t["parameters"])
-                for t in tools
-            ])],
-            "automatic_function_calling": types.AutomaticFunctionCallingConfig(disable=True),
-        }
-    stream = await _get_client().aio.models.generate_content_stream(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            temperature=0.3,
-            max_output_tokens=150,
-            **tool_config,
-        ),
+        extra["tools"] = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
+                          for t in tools]
+    stream = await _get_client().chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+        temperature=0.3,
+        max_completion_tokens=MAX_OUTPUT_TOKENS,
+        reasoning_effort=REASONING_EFFORT,
+        stream=True,
+        **extra,
     )
+
+
+    # delta is the chunks which are streamed from groq, each chunk can contain text and/or tool call fragments. We need to accumulate the tool call fragments until we have a complete tool call, then yield it as a dict.
+    calls: dict[int, dict] = {}  # tool-call index -> {"name": str, "arguments": str}
     async for chunk in stream:
-        # Extract candidate content
-        candidates = chunk.candidates
-    
-        if not candidates:
+        if not chunk.choices:
             continue
-    
-        content = candidates[0].content
-        if not content:
-            continue
-    
-        # Process individual response parts
-        for part in content.parts or []:
-    
-            if part.function_call:
-                yield {
-                    "name": part.function_call.name,
-                    "args": dict(part.function_call.args or {}),
-                }
-    
-            elif part.text and not part.thought:
-                yield part.text
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield delta.content
+        for fragment in delta.tool_calls or []:
+            call = calls.setdefault(fragment.index, {"name": "", "arguments": ""})
+            if fragment.function and fragment.function.name:
+                call["name"] = fragment.function.name
+            if fragment.function and fragment.function.arguments:
+                call["arguments"] += fragment.function.arguments
+
+    for call in calls.values():
+        try:
+            args = json.loads(call["arguments"] or "{}")
+        except ValueError:  # shortcut: broken arguments become {}; the registry then reports any missing required one
+            args = {}
+        yield {"name": call["name"], "args": args if isinstance(args, dict) else {}}

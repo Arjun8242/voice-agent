@@ -7,6 +7,7 @@ graph's stream events into WebSocket messages and speech:
     token      -> assistant_text message, and the sentence splitter feeds TTS
     card       -> ui_card message (the tools node emits it as soon as the tools finish)
     retrieval  -> metric message (rag_complete)
+    booking_execute -> on_booking_execute(event): the calendar call after a confirm, run outside the turn
 
 The graph runs inside this coroutine with the async API and nothing is detached, so
 cancelling the turn task (barge-in) also stops the graph. Never swallow CancelledError here.
@@ -84,6 +85,8 @@ async def voice_turn(
     interrupted_reply: str = "",
     timings: dict | None = None,
     visitor_timezone: str = "",
+    ui_action: dict | None = None,
+    on_booking_execute: Callable[[dict], None] | None = None,
 ) -> None:
     """Run one turn through the graph. Cancellable via task cancellation or interrupt_event.
 
@@ -132,7 +135,7 @@ async def voice_turn(
 
     try:
         async with asyncio.TaskGroup() as tg:
-            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone):
+            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone, ui_action):
                 if mode == "values":  # state after each step: only the tool calls are needed here
                     tools_used = [c["name"] for c in event.get("tool_calls", [])]
                     continue
@@ -160,6 +163,9 @@ async def voice_turn(
 
                 elif kind == "card":
                     await send("ui_card", {"card": event["card"]})
+
+                elif kind == "booking_execute" and on_booking_execute is not None:
+                    on_booking_execute(event)  # the connection runs it as its own task: it must outlive this turn
 
                 elif kind == "retrieval":
                     marks["rag_ms"] = event["ms"]
