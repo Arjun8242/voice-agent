@@ -1,0 +1,41 @@
+# Grounded: the answer is in the knowledge base, and the reply must state the fact from it.
+# Run: python -m backend.evals.run_questions --suite grounded [--runs 3] [--only <id>]
+# The questions and facts come from smoke.yaml; nothing here is a new fact. Checked by code only.
+#
+#   expect.must_include_any  the reply contains at least one of these words (not case sensitive)
+
+- id: beacon-duplicate-scheduling
+  category: beacon
+  query: How does Beacon stop two scheduler instances from picking up the same monitor?
+  expect: {must_include_any: [SKIP LOCKED]}
+
+- id: beacon-hosting
+  category: beacon
+  query: Where is Beacon deployed?
+  expect: {must_include_any: [Render]}
+
+- id: valyrian-what
+  category: valyrian
+  query: Has he implemented an interpreter from scratch?
+  expect: {must_include_any: [tree-walking, tree walking]}
+
+# --- facts that live only in the experience entry or a project's status -------------------------
+- id: mysql-from-internship
+  category: experience
+  query: Has he worked with MySQL?  # MySQL is in the LifeLinkr internship, not in skills.yaml
+  expect: {must_include_any: [LifeLinkr, internship]}
+
+- id: internship-end
+  category: experience
+  query: When did his internship end?
+  expect: {must_include_any: [February 2026, Feb 2026, 2026-02]}
+
+- id: valyrian-not-live
+  category: valyrian
+  query: Give me a live link so I can try Valyrian.
+  expect: {must_include_any: [not deployed, locally, isn't deployed]}
+
+- id: resend-both-projects
+  category: beacon
+  query: Which of his projects use Resend?  # Beacon and FitAI, both must be named
+  expect: {must_include_all: [Beacon, FitAI]}

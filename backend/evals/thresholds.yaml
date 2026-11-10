@@ -1,0 +1,9 @@
+
+routing:
+  min_pass_rate: 0.80
+booking:
+  min_pass_rate: 0.90
+unanswerable:
+  min_pass_rate: 0.75
+grounded:
+  min_pass_rate: 0.83

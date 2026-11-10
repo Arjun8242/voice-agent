@@ -9,17 +9,16 @@ import re
 
 def extract_next_sentence(buffer: str) -> dict | None:
     """
-    Find the first sentence-ending punctuation and split there.
+    Find the first sentence end and split there.
 
-    Returns {"sentence": str, "remaining": str}, or None if no terminator found.
+    Returns {"sentence": str, "remaining": str}, or None if no sentence end found.
     """
-    match = re.search(r"[.!?]", buffer)
+    match = re.search(r"[.!?]+[\"')\]]*(?=\s)", buffer)
     if match is None:
         return None
-    idx = match.start()
     return {
-        "sentence": buffer[: idx + 1].strip(),
-        "remaining": buffer[idx + 1 :].strip(),
+        "sentence": buffer[: match.end()].strip(),
+        "remaining": buffer[match.end() :].lstrip(), #removes the leading whitespace from remaining text
     }
 
 

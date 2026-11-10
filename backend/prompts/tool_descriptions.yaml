@@ -1,0 +1,52 @@
+# Each one says when to use the tool and which neighbouring tool to use instead.
+
+searchProjects: >
+  List Arjun's projects with id, name, one-line summary and status. Use it when
+  the visitor asks what Arjun has built or which projects use a technology
+  (pass that technology as tech). For how a project works or why it was built a
+  certain way, use getProjectDetail. For whether Arjun knows a technology, use
+  getSkills.
+
+getProjectDetail: >
+  Get one section of a project's document: Overview, Architecture, Key
+  decisions, Limitations or Testing. Use it when the visitor asks how a named
+  project works, why it was designed a certain way, what is not done, or how it
+  was tested. It also shows the project on screen. Needs a project id; if you do
+  not know it, call searchProjects first. For a list of projects, use
+  searchProjects.
+
+getSkills: >
+  Look up Arjun's skills. When the visitor names a skill or technology, pass it
+  as skill to get the projects or jobs that show it; found false means it is
+  not a listed skill. Call with no skill only when the visitor asks for all of
+  his skills. For which projects use a technology, use searchProjects.
+
+checkAvailability: >
+  Show Arjun's free 30-minute meeting slots on screen, in the visitor's
+  timezone. Use it when the visitor wants to meet or talk or asks when Arjun is
+  free and has said which day or time suits them. Pass date_from and date_to
+  (YYYY-MM-DD, worked out from today's date) for the days they named, and
+  time_from and time_to (HH:MM) for a time of day such as afternoon. It returns
+  at most 3 times, spread over the days, so a list of 3 is not every free time. To check one exact time, set
+  time_from and time_to both to it. It only shows times and books nothing. For questions about Arjun's work, use
+  searchProjects or getSkills.
+
+startBooking: >
+  Start booking the slot the visitor chose, passing its slot_id from
+  checkAvailability. It books nothing yet: it shows a form where the visitor
+  types their name and email, then a summary they confirm on screen. Never say
+  the meeting is booked after this call. If the slot is unavailable, call
+  checkAvailability again. To cancel, use cancelBooking.
+
+cancelBooking: >
+  Cancel this visitor's meeting or the booking they started. For a booked
+  meeting it only shows a confirmation on screen; the meeting is cancelled only
+  after the visitor confirms there, so never say it is cancelled after this
+  call unless the result says cancelled. To book a meeting, use
+  checkAvailability and startBooking.
+
+getLinks: >
+  Show one of Arjun's profile links on screen: portfolio, resume, GitHub,
+  LinkedIn, X (Twitter) or a coding profile. Use it when the visitor asks for a link,
+  profile, resume or where to see his code. For details about a project, use
+  getProjectDetail.

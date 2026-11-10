@@ -1,0 +1,101 @@
+# Routing (S9): does the agent call the right tool with the right arguments, or none when none fits?
+# Run: python -m backend.evals.run_questions --suite routing [--runs 3] [--only <id>]
+# Checked by code only. Each case is one question in a fresh session.
+#
+#   expect.tool   a tool that must be among the turn's calls; null = no tool may be called
+#   expect.args   {arg: value} that call must have (not case sensitive). A list of values = any of them;
+#                 null = the argument must be absent; a list of dicts = any one set matches
+#   expect.ask    true: the reply must ask a question (unclear requests)
+# Booking tools are checked in booking.yaml, where they are used across several turns.
+
+# --- getSkills, with the skill as the visitor said it -------------------------------
+
+- id: skill-react-misheard
+  category: skills
+  query: does arjun no react  # speech-to-text heard "know" as "no"
+  expect: {tool: getSkills, args: {skill: [React, React.js, ReactJS]}}
+
+- id: skill-all
+  category: skills
+  query: What are his technical skills?
+  expect: {tool: getSkills, args: {skill: null}}
+
+# --- searchProjects for lists of projects -----------------------------------------
+- id: projects-all
+  category: projects
+  query: What projects has Arjun built?
+  expect: {tool: searchProjects}
+
+- id: projects-by-tech
+  category: projects
+  query: Which of his projects use Redis?
+  expect: {tool: searchProjects, args: [{tech: Redis}, {query: Redis}]}
+
+- id: projects-by-tech-java
+  category: projects
+  query: Has he built anything in Java?
+  expect: {tool: searchProjects, args: [{tech: Java}, {query: Java}]}
+
+- id: show-beacon  # regression test: it once repeated the same getProjectDetail call until the step cap
+  category: show_project
+  query: Show me the Beacon project.
+  expect: {tool: getProjectDetail, args: {project_id: beacon}}
+
+- id: show-valyrian-architecture
+  category: show_project
+  query: Open the architecture of Valyrian.
+  expect: {tool: getProjectDetail, args: {project_id: valyrian, section: Architecture}}
+
+- id: show-fitai-limitations
+  category: show_project
+  query: Pull up the limitations section for FitAI.
+  expect: {tool: getProjectDetail, args: {project_id: fitai, section: [Limitations, Scope and Limitations]}}
+
+# --- getLinks with the right link type -------------------------------------------------
+- id: link-github
+  category: links
+  query: Can you share his GitHub?
+  expect: {tool: getLinks, args: {type: github_profile}}
+
+- id: link-resume
+  category: links
+  query: Where can I see his resume?
+  expect: {tool: getLinks, args: {type: resume}}
+
+# --- no tool: a greeting, or a request too unclear to act on -----------------------------
+- id: greeting
+  category: no_tool
+  query: Hi there!
+  expect: {tool: null}
+
+- id: unclear
+  category: no_tool
+  query: Can you tell me more about that?
+  expect: {tool: null, ask: true}
+
+# --- hard routing: other languages, misheard names, two asks in one message ----------------------
+- id: skill-hinglish
+  category: skills
+  query: kya Arjun ko Redis aata hai?  # Hinglish, as a visitor in India may say it
+  expect: {tool: getSkills, args: {skill: Redis}}
+
+- id: show-valyrian-misheard
+  category: show_project
+  query: Open the architecture of the Valerian project.
+  expect: {tool: getProjectDetail, args: {project_id: valyrian, section: Architecture}}
+
+- id: link-twitter
+  category: links
+  query: What's his Twitter?  # no twitter type exists; X is stored as professional_profile
+  expect: {tool: getLinks, args: {type: professional_profile}}
+
+# one message, two asks: the same query is checked once per tool
+- id: two-asks-link
+  category: links
+  query: Show me his GitHub and the Beacon project.
+  expect: {tool: getLinks, args: {type: github_profile}}
+
+- id: two-asks-project
+  category: show_project
+  query: Show me his GitHub and the FitAI project.
+  expect: {tool: getProjectDetail, args: {project_id: fitai}}

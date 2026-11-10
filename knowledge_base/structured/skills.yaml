@@ -1,0 +1,108 @@
+- id: typescript
+  skill: TypeScript
+  category: language
+  evidence: [beacon]
+
+- id: javascript
+  skill: JavaScript
+  category: language
+  evidence: [fitai]
+
+- id: java
+  skill: Java
+  category: language
+  evidence: [valyrian]
+
+- id: nextjs
+  skill: Next.js
+  category: frontend
+  evidence: [beacon]
+
+- id: react
+  skill: React
+  category: frontend
+  evidence: [fitai]
+
+
+- id: nodejs
+  skill: Node.js
+  category: backend
+  evidence: [fitai]
+
+- id: express
+  skill: Express.js
+  category: backend
+  evidence: [beacon, fitai]
+
+- id: postgresql
+  skill: PostgreSQL
+  category: database
+  evidence: [beacon]
+
+- id: prisma
+  skill: Prisma
+  category: database
+  evidence: [beacon]
+
+- id: mongodb
+  skill: MongoDB
+  category: database
+  evidence: [fitai]
+
+- id: mongoose
+  skill: Mongoose
+  category: database
+  evidence: [fitai]
+
+- id: redis
+  skill: Redis
+  category: backend
+  evidence: [beacon]
+
+- id: bullmq
+  skill: BullMQ
+  category: backend
+  evidence: [beacon]
+
+- id: turborepo
+  skill: Turborepo
+  category: tooling
+  evidence: [beacon]
+
+- id: gradle
+  skill: Gradle
+  category: tooling
+  evidence: [valyrian]
+
+
+- id: gemini-ai-integration
+  skill: Gemini AI Integration
+  category: ai
+  evidence: [fitai]
+
+- id: docker
+  skill: Docker
+  category: devops
+  evidence: [beacon, fitai]
+
+- id: resend
+  skill: Resend
+  category: integrations
+  evidence: [beacon, fitai]
+
+- id: jwt
+  skill: JWT Authentication
+  category: security
+  evidence: [fitai]
+
+
+- id: rate-limiting
+  skill: Rate Limiting
+  category: security
+  evidence: [fitai]
+
+
+- id: interpreter-design
+  skill: Interpreter Design
+  category: computer-science
+  evidence: [valyrian]

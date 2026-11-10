@@ -1,7 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { startMic, stopMic } from '$lib/mic';
-  import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone } from '$lib/playback';
+  import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone, currentSentenceId } from '$lib/playback';
+  import { KEEP_ACROSS_TURNS, type Card } from '$lib/cards';
+  import ProjectCard from '$lib/components/ProjectCard.svelte';
+  import LinkCard from '$lib/components/LinkCard.svelte';
+  import BookingCard from '$lib/components/BookingCard.svelte';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
   import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -14,8 +18,13 @@
   let partialText = $state('');
   let finalText = $state('');
   let assistantText = $state('');
+  let cards = $state<Card[]>([]);
+  // Turns up to this id were interrupted; the server tags every message of a turn with turnId.
+  let cancelledTurn = 0;
+  // Turn whose answer the server has finished sending; its audio may still be playing here.
+  let doneTurn = 0;
   let errorMsg = $state('');
-  let metrics = $state<{ ttfaMs?: number; ragMs?: number; geminiTtftMs?: number; totalMs?: number }>({});
+  let metrics = $state<{ ttfaMs?: number; ragMs?: number; llmTtftMs?: number; totalMs?: number }>({});
 
   let ws: WebSocket | null = null;
   let audioEl: HTMLAudioElement;
@@ -23,12 +32,41 @@
 
   const WS_URL = 'ws://localhost:3001';
 
+  // A newer card for the same booking replaces the older ones (form -> summary -> outcome),
+  // and picking a slot retires the slots list.
+  function placeCard(card: Card) {
+    const bookingId = 'booking_id' in card.data ? card.data.booking_id : null;
+    cards = [
+      ...cards.filter((c) =>
+        c.card_id !== card.card_id
+        && !(bookingId && 'booking_id' in c.data && c.data.booking_id === bookingId)
+        && !(card.type === 'booking_form' && c.type === 'slots')),
+      card,
+    ];
+  }
+
+  // A click on a booking card runs as a turn of its own on the server (graph booking_gate).
+  function sendAction(action: string, payload: Record<string, string>) {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    assistantText = '';
+    status = 'thinking';
+    ws.send(JSON.stringify({ type: 'ui_action', action, payload }));
+  }
+
   // ── WebSocket ─────────────────────────────────────────────────────────────
   function connectWS() {
     ws = new WebSocket(WS_URL);
     ws.binaryType = 'arraybuffer';
 
-    ws.onopen = () => { errorMsg = ''; };
+    ws.onopen = () => {
+      errorMsg = '';
+      // First message of every page load: resend the id kept from before (empty on a first visit).
+      ws?.send(JSON.stringify({
+        type: 'session_start',
+        sessionId: sessionStorage.getItem('sessionId') ?? '',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }));
+    };
     ws.onerror = () => { errorMsg = 'WebSocket error — is the server running on :3001?'; };
     ws.onclose = () => {
       stopMic();
@@ -46,7 +84,14 @@
 
       const msg = JSON.parse(ev.data as string);
 
+      // A cancelled turn's text or card must never show up late.
+      if (msg.turnId !== undefined && msg.turnId <= cancelledTurn) return;
+
       switch (msg.type) {
+        case 'session':
+          sessionStorage.setItem('sessionId', msg.sessionId);
+          break;
+
         case 'transcript_partial':
           partialText = msg.text;
           break;
@@ -55,6 +100,7 @@
           finalText = msg.text;
           partialText = '';
           assistantText = "";
+          cards = cards.filter((c) => KEEP_ACROSS_TURNS.has(c.type));
           resetPlayback(audioEl);
           status = 'thinking';
           break;
@@ -63,9 +109,19 @@
           assistantText += msg.text;
           break;
 
+        case 'ui_card':
+          // Same card_id replaces the earlier card instead of showing it twice.
+          placeCard(msg.card);
+          break;
+
+        case 'booking_update':
+          // The calendar call's result. It has no turnId, so it arrives even if the turn was cut off.
+          placeCard({ ...msg.card, data: { ...msg.card.data, text: msg.text } });
+          break;
+
         case 'metric':
           if (msg.stage === 'rag_complete') metrics.ragMs = msg.ragLatencyMs;
-          if (msg.stage === 'gemini_first_token') metrics.geminiTtftMs = msg.ttftMs;
+          if (msg.stage === 'llm_first_token') metrics.llmTtftMs = msg.ttftMs;
           break;
 
         case 'tts_end':
@@ -77,6 +133,7 @@
 
         case 'done':
           metrics.totalMs = msg.totalMs;
+          doneTurn = msg.turnId;
           signalDone();
           // Only return to listening if the mic is still on.
           status = micActive ? 'listening' : 'idle';
@@ -84,6 +141,9 @@
 
         case 'interrupted':
           // Server superseded current turn due to barge-in
+          if (msg.turnId > cancelledTurn) cancelledTurn = msg.turnId;
+          // Tell the server which sentence was playing, so it keeps only what the visitor heard.
+          ws?.send(JSON.stringify({ type: 'playback_progress', turnId: msg.turnId, lastSentenceId: currentSentenceId() }));
           resetPlayback(audioEl);
           assistantText = '';
           status = micActive ? 'listening' : 'idle';
@@ -112,6 +172,7 @@
     partialText = '';
     finalText = '';
     assistantText = '';
+    cards = [];
     errorMsg = '';
     metrics = {};
     resetPlayback(audioEl);
@@ -137,6 +198,12 @@
   // ── Lifecycle ─────────────────────────────────────────────────────────────
   onMount(() => {
     initPlayback(audioEl);
+    // The answer's audio finished: tell the server, so speech from now on is a new question, not a barge-in.
+    audioEl.addEventListener('ended', () => {
+      if (doneTurn && ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'playback_ended', turnId: doneTurn }));
+      }
+    });
     connectWS();
   });
 
@@ -239,6 +306,17 @@
       </div>
     {/if}
 
+    <!-- Cards from tools (project detail, links) and booking -->
+    {#each cards as card (card.card_id)}
+      {#if card.type === 'project_detail'}
+        <ProjectCard data={card.data} />
+      {:else if card.type === 'link'}
+        <LinkCard data={card.data} />
+      {:else}
+        <BookingCard {card} onAction={sendAction} />
+      {/if}
+    {/each}
+
     <!-- Error -->
     {#if errorMsg}
       <div class="rounded-xl bg-red-500/10 border border-red-500/30 p-4">
@@ -255,8 +333,8 @@
           {#if metrics.ragMs !== undefined}
             {@render Metric({ label: 'RAG', value: `${metrics.ragMs}ms` })}
           {/if}
-          {#if metrics.geminiTtftMs !== undefined}
-            {@render Metric({ label: 'LLM TTFT', value: `${metrics.geminiTtftMs}ms` })}
+          {#if metrics.llmTtftMs !== undefined}
+            {@render Metric({ label: 'LLM TTFT', value: `${metrics.llmTtftMs}ms` })}
           {/if}
           {#if metrics.ttfaMs !== undefined}
             {@render Metric({ label: 'First Audio', value: `${metrics.ttfaMs}ms`, highlight: true })}

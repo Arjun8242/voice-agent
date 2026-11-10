@@ -5,13 +5,19 @@ node_modules/
 .env
 
 # Documentation
-docs/
+phase0-audit.md
+knowledge_base/docs/decisions/phase0-audit.md
+docs/session-handoff.md
+
 
 # Logs & output files
 *.log
 *.wav
 *.mp3
 sarvam_test_output.wav
+kb_index.json
+
+
 
 # OS files
 .DS_Store
@@ -28,3 +34,13 @@ env/
 venv/
 .venv/
 .pytest_cache/
+data/
+reports/
+
+
+# Local tooling and tests
+backend/tests/client_secret.json
+backend/tests/google_auth.py
+CLAUDE.md
+.claude/
+graphify-out/

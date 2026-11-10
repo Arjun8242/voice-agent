@@ -1,0 +1,180 @@
+# S6 smoke set. Each question names the evidence it needs: source file + heading.
+# Never use chunk ids here, so the labels survive re-chunking.
+#
+# type:
+#   direct         answer sits in one section
+#   followup       short question that depends on a topic (project id) set earlier
+#   boundary       should retrieve a rule from docs/boundaries.md
+#   unanswerable   the KB has nothing on it; retrieval must return nothing
+#   exploratory    printed for inspection, never counted as pass/fail
+#
+# expect: list of acceptable evidence; passing = ANY one is retrieved in the top K.
+#   source    exact source path as stored in the index
+#   heading   last heading, or "Parent > Child" when the last heading repeats
+#   contains  optional words that must appear in that chunk's text
+
+- id: beacon-purpose
+  type: direct
+  query: "what is beacon and does it solve any real world problem? and how is it different from other uptime platforms"
+  expect:
+    - {source: docs/projects/beacon.md, heading: "Overview", contains: [uptime]}
+
+- id: beacon-queue
+  type: direct
+  query: "Why doesn't Beacon just run the health checks inside the API server?"
+  expect:
+    - {source: docs/projects/beacon.md, heading: "Why use a queue instead of running checks inside the API?", contains: [asynchronously]}
+
+- id: beacon-duplicate-scheduling
+  type: direct
+  query: "How does it stop two scheduler instances from picking up the same monitor?"
+  expect:
+    - {source: docs/projects/beacon.md, heading: "How does Beacon prevent multiple schedulers from scheduling the same monitor?", contains: [SKIP LOCKED]}
+    - {source: docs/projects/beacon.md, heading: "Engineering Challenge: Double Scheduling > Solution", contains: [SKIP LOCKED]}
+
+- id: beacon-hosting
+  type: direct
+  query: "Since Beacon is distributed system. so where have you deployed the services?"
+  expect:
+    - {source: docs/projects/beacon.md, heading: "Deployment", contains: [Render]}
+
+- id: fitai-ai-coach
+  type: direct
+  query: "How does the AI coach in FitAI work?"
+  expect:
+    - {source: docs/projects/fitai.md, heading: "Main Features > AI-assisted fitness features", contains: [Gemini]}
+
+- id: valyrian-what
+  type: direct
+  query: "Have you implemented interpreter from scratch"
+  expect:
+    - {source: docs/projects/valyrian.md, heading: "Overview", contains: [tree-walking]}
+
+- id: lifelinkr-work
+  type: direct
+  query: "What was his role at LifeLinkr?"
+  expect:
+    - {source: structured/experience.yaml, heading: "Backend Developer Intern"}
+    - {source: docs/faq.md, heading: "What did he work on during his internship?"}
+
+- id: beacon-limits-followup
+  type: followup
+  topic: beacon
+  query: "What isn't implemented yet?"
+  expect:
+    - {source: docs/projects/beacon.md, heading: "Limitations and Future Work", contains: [status pages]}
+
+- id: valyrian-tests-followup
+  type: followup
+  topic: valyrian
+  query: "How is it tested?"
+  expect:
+    - {source: docs/projects/valyrian.md, heading: "Test Coverage"}
+
+- id: no-kubernetes
+  type: unanswerable
+  query: "what do you know about kubernetes?"
+
+- id: no-aws
+  type: unanswerable
+  query: "can you tell me about AWS?"
+
+- id: no-kafka
+  type: unanswerable
+  query: "Has he worked with Kafka for event streaming?"
+
+- id: no-graphql
+  type: unanswerable
+  query: "Is he familiar with GraphQL APIs?"
+
+- id: boundary-salary
+  type: boundary
+  query: "What salary is he expecting?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Salary and compensation", contains: [compensation]}
+
+- id: boundary-phone
+  type: boundary
+  query: "Can I get his phone number?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Personal contact details"}
+
+# Known weak spot: the KB has no first-person reflection. Look at what comes back.
+- id: explore-learned
+  type: exploratory
+  topic: beacon
+  query: "What did he learn from building Beacon?"
+
+
+
+
+- id: no-terraform
+  type: unanswerable
+  query: "do he work with infrastructure as code like terraform?"
+
+- id: no-cicd
+  type: unanswerable
+  query: "does he know about ci cd? and has he setup any ci cd pipeline"
+
+# Neighbour trap: the KB has Gemini integration and an FAQ about AI work, but nothing on model training.
+- id: no-ml-training
+  type: unanswerable
+  query: "Has he ever trained or fine-tuned a machine learning model?"
+
+# Recruiters ask this a lot. The KB says nothing about either.
+- id: no-hackathons
+  type: unanswerable
+  query: "Did he win any hackathons or contribute to open source?"
+
+# Off-topic: should not retrieve anything about Arjun.
+- id: offtopic-weather
+  type: unanswerable
+  query: "what's the weather like today?"
+
+# --- boundary (3), phrased the way a recruiter would say it ---
+
+- id: boundary-ctc
+  type: boundary
+  query: "What CTC is he looking for?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Salary and compensation", contains: [compensation]}
+
+- id: boundary-offers
+  type: boundary
+  query: "Is he interviewing anywhere else, does he have any other offers?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Current employment, offers, and interview status"}
+
+- id: boundary-cgpa
+  type: boundary
+  query: "What was his CGPA and which college is he from?"
+  expect:
+    - {source: docs/boundaries.md, heading: "Academic details not provided", contains: [CGPA]}
+
+# --- direct ---
+
+- id: direct-fitai-stack
+  type: direct
+  query: "What is FitAI built with?"
+  expect:
+    - {source: docs/projects/fitai.md, heading: "Architecture", contains: [MongoDB]}
+
+- id: redis-no-topic
+  type: direct
+  query: "does he know Redis?"
+  expect:
+    - {source: structured/skills.yaml, heading: "Redis"}
+    - {source: docs/projects/beacon.md, heading: "Architecture > Main components", contains: [Redis]}
+
+- id: redis-stale-topic
+  type: direct
+  topic: fitai
+  query: "does he know Redis?"
+  expect:
+    - {source: structured/skills.yaml, heading: "Redis"}
+    - {source: docs/projects/beacon.md, heading: "Architecture > Main components", contains: [Redis]}
+
+- id: weather-stale-topic
+  type: unanswerable
+  topic: fitai
+  query: "what's the weather like today?"
