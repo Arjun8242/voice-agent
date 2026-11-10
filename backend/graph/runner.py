@@ -36,13 +36,13 @@ async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str 
         yield mode, chunk
 
 
-async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = None) -> dict:
+async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = None, visitor_timezone: str = "") -> dict:
     start = time.perf_counter()
     first_token_ms = None
     retrieval: dict ={}
     final: dict = {}
 
-    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text, ui_action = ui_action):
+    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text, ui_action = ui_action, visitor_timezone = visitor_timezone):
 
         if mode == "custom" and chunk.get("type") == "token" and first_token_ms is None:
             first_token_ms = round((time.perf_counter() - start)*1000, 1)

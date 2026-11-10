@@ -43,19 +43,29 @@ async def stream_text(
     prompt: str,
     system_instruction: str,
     tools: list[dict] | None = None,
+    tool_calls: list[dict] | None = None,
 ) -> AsyncIterator[str | dict]:
     """Yield Groq output as it arrives. Used by the graph's agent node.
 
     Text is yielded as str; each tool call, once its arguments are complete, as {"name": ..., "args": {...}}.
     tools are declarations {name, description, parameters (JSON schema)}.
+    tool_calls are the calls already run this turn, each {name, args, result}. They are sent as an assistant
+    message plus one tool message per call: results pasted into the prompt as text did not count as done for
+    the model, so it asked for the same call again until the step cap.
     """
+    messages = [{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}]
+    if tool_calls:
+        ids = [f"call_{i}" for i in range(len(tool_calls))]
+        messages.append({"role": "assistant", "content": None, "tool_calls": [
+            {"id": i, "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c["args"])}} for i, c in zip(ids, tool_calls)]})
+        messages += [{"role": "tool", "tool_call_id": i, "content": json.dumps(c["result"], ensure_ascii=False)} for i, c in zip(ids, tool_calls)]
     extra = {}
     if tools:
         extra["tools"] = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}}
                           for t in tools]
     stream = await _get_client().chat.completions.create(
         model=GROQ_MODEL,
-        messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+        messages=messages,
         temperature=0.3,
         max_completion_tokens=MAX_OUTPUT_TOKENS,
         reasoning_effort=REASONING_EFFORT,

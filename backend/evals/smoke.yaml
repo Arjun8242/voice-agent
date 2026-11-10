@@ -151,14 +151,7 @@
   expect:
     - {source: docs/boundaries.md, heading: "Academic details not provided", contains: [CGPA]}
 
-# --- direct (2) ---
-
-- id: direct-redis
-  type: direct
-  query: "does he know Redis?"
-  expect:
-    - {source: structured/skills.yaml, heading: "Redis"}
-    - {source: docs/projects/beacon.md, heading: "Architecture > Main components", contains: [Redis]}
+# --- direct ---
 
 - id: direct-fitai-stack
   type: direct

@@ -38,8 +38,8 @@ class CheckAvailabilityArgs(Args):
     # strings, not dates: the handler parses them, so a bad value comes back to the model as a tool error
     date_from: str | None = Field(default=None, description="First day to look at, YYYY-MM-DD, in the visitor's timezone. Omit to start today.")
     date_to: str | None = Field(default=None, description="Last day to look at, YYYY-MM-DD, in the visitor's timezone. Omit to look as far ahead as bookings are allowed.")
-    time_from: str | None = Field(default=None, description="Earliest start time, HH:MM 24-hour, in the visitor's timezone. For 'afternoon' use 12:00. Omit if no time was named.")
-    time_to: str | None = Field(default=None, description="Latest start time, HH:MM 24-hour, in the visitor's timezone. For 'afternoon' use 17:00. Omit if no time was named.")
+    time_from: str | None = Field(default=None, description="Earliest start time, HH:MM 24-hour, in the visitor's timezone. For 'afternoon' use 12:00. For an exact time such as 3 PM, set time_from and time_to both to 15:00. Omit if no time was named.")
+    time_to: str | None = Field(default=None, description="Latest start time, HH:MM 24-hour, in the visitor's timezone. For 'afternoon' use 17:00. For an exact time, the same as time_from. Omit if no time was named.")
 
 
 class StartBookingArgs(Args):

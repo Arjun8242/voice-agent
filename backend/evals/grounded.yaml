@@ -1,0 +1,30 @@
+# Grounded (S8, S17): the answer is in the knowledge base, and the reply must state the fact from it.
+# Run: python -m backend.evals.run_questions --suite grounded [--runs 3] [--only <id>]
+# The questions and facts come from smoke.yaml; nothing here is a new fact. Checked by code only.
+#
+#   expect.must_include_any  the reply contains at least one of these words (not case sensitive)
+
+- id: beacon-queue
+  category: beacon
+  query: Why doesn't Beacon just run the health checks inside the API server?
+  expect: {must_include_any: [asynchronous]}
+
+- id: beacon-duplicate-scheduling
+  category: beacon
+  query: How does Beacon stop two scheduler instances from picking up the same monitor?
+  expect: {must_include_any: [SKIP LOCKED]}
+
+- id: beacon-hosting
+  category: beacon
+  query: Where is Beacon deployed?
+  expect: {must_include_any: [Render]}
+
+- id: fitai-ai-coach
+  category: fitai
+  query: How does the AI coach in FitAI work?
+  expect: {must_include_any: [Gemini]}
+
+- id: valyrian-what
+  category: valyrian
+  query: Has he implemented an interpreter from scratch?
+  expect: {must_include_any: [tree-walking, tree walking]}

@@ -18,7 +18,7 @@ def extract_next_sentence(buffer: str) -> dict | None:
         return None
     return {
         "sentence": buffer[: match.end()].strip(),
-        "remaining": buffer[match.end() :].strip(),
+        "remaining": buffer[match.end() :].lstrip(), #removes the leading whitespace from remaining text
     }
 
 

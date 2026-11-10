@@ -9,7 +9,7 @@
 Dependencies are passed in (see server/main.py for the real ones), so the graph
 can be tested with fakes and never imports the retriever or the LLM itself:
     retrieve_fn(query, top_k, topic) -> retrieval result dict
-    generate_fn(prompt, system_instruction, tools) -> async iterator of text pieces and tool-call dicts
+    generate_fn(prompt, system_instruction, tools, tool_calls) -> async iterator of text pieces and tool-call dicts
     aliases: spoken project name -> project id
     registry: tools.registry.ToolRegistry, or None for the S8 graph without tools
     gate: the booking_gate node (nodes/booking_gate.py), or None while booking is disabled

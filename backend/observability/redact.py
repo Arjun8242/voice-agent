@@ -1,10 +1,4 @@
-"""redact.py: mask the visitor's name, email and meeting title before a trace leaves the process (S16).
-
-With LANGSMITH_TRACING on, LangSmith records every graph node's input and output. A booking form
-submit puts the visitor's details in state for one turn (ui_action), and the summary card carries
-them, so they would be sent as they are. tracing_callbacks() returns a LangSmith tracer whose client
-runs redact() on every input and output. A tracer passed in the run config replaces LangChain's
-default one (langchain_core only adds the default when no LangChainTracer is present).
+"""redact.py: mask the visitor's name, email and meeting title before a trace leaves the process.
 
 Masked: email, visitor_email, visitor_name and meeting_title anywhere; name and title only inside
 booking data (a ui_action payload or a booking_* card), because elsewhere those keys hold tool names

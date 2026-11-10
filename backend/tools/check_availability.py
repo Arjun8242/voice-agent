@@ -11,7 +11,6 @@ from zoneinfo import ZoneInfo
 
 from .schemas import Args, ToolError
 
-# backend.* first so the classes match the ones tests and the fake calendar use (see booking/availability.py)
 try:
     from backend.booking.availability import compute_slots
     from backend.gcal.adapter import CalendarError
@@ -58,7 +57,7 @@ def fresh_slots(cal, sched, now: datetime, zone: str):
         raise ToolError("calendar_unavailable", f"The calendar could not be read ({err.code}). Say so and try again later.")
     try:
         return compute_slots(sched, busy, now, zone)
-    except ValueError as err:  # a scheduling rule is not set in scheduling.yaml
+    except ValueError as err:
         raise ToolError("not_configured", str(err))
 
 
@@ -69,10 +68,21 @@ def check_availability(args: Args, ctx: dict, cal, sched, clock=lambda: datetime
     slots = fresh_slots(cal, sched, clock(), zone)
 
     local = lambda slot: slot.start.astimezone(ZoneInfo(zone))
-    slots = [s for s in slots if (first is None or local(s).date() >= first) and (last is None or local(s).date() <= last)
-             and (earliest is None or local(s).time() >= earliest) and (latest is None or local(s).time() <= latest)]
+    days = [s for s in slots if (first is None or local(s).date() >= first) and (last is None or local(s).date() <= last)]
+    slots = [s for s in days if (earliest is None or local(s).time() >= earliest) and (latest is None or local(s).time() <= latest)]
+    closest = not slots and earliest is not None and earliest == latest  # an exact time that is taken or off the 30-minute grid
+    if closest:
+        want = earliest.hour * 60 + earliest.minute
+        slots = sorted(days, key=lambda s: (local(s).date(), abs(local(s).hour * 60 + local(s).minute - want)))
     shown = [{"slot_id": s.id, "label": s.label} for s in _spread(slots, zone)]
     result = {"timezone": zone, "slots": shown}
+    if shown and closest:
+        result["note"] = "Nothing is free at that exact time. These are the closest times; say so and offer them."
+
+    #without this model only shows the first 3 slots and says the rest are taken, even if they are free
+    elif len(slots) > len(shown):  
+        result["note"] = (f"Only {len(shown)} of {len(slots)} matching times are listed; the others are free too. Never tell the visitor "
+                          "a time is unavailable unless a search with time_from and time_to both set to that time found nothing.")
     if not shown:
         result["note"] = "No free time matches. Say so and ask the visitor for another day or time."
     cards = [{"card_id": "slots", "type": "slots", "data": result}] if shown else []

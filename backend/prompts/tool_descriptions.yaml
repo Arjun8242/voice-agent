@@ -27,7 +27,8 @@ checkAvailability: >
   free and has said which day or time suits them. Pass date_from and date_to
   (YYYY-MM-DD, worked out from today's date) for the days they named, and
   time_from and time_to (HH:MM) for a time of day such as afternoon. It returns
-  at most 3 times, spread over the days. It only shows times and books nothing. For questions about Arjun's work, use
+  at most 3 times, spread over the days, so a list of 3 is not every free time. To check one exact time, set
+  time_from and time_to both to it. It only shows times and books nothing. For questions about Arjun's work, use
   searchProjects or getSkills.
 
 startBooking: >

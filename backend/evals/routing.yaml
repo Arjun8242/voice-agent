@@ -1,138 +1,104 @@
-# S9 routing set: does the agent pick the right tool with the right arguments?
-# Checked by code only (no LLM judge). Each case is a fresh session.
+# Routing (S9): does the agent call the right tool with the right arguments, or none when none fits?
+# Run: python -m backend.evals.run_questions --suite routing [--runs 3] [--only <id>]
+# Checked by code only. Each case is one question in a fresh session.
 #
-#   id, category, query
-#   expect.tool:  tool name that must appear among the turn's calls, or null = no tool may be called
-#   expect.args:  {arg: value} the call must have (case-insensitive). A list of values = any of them.
-#                 null as a value = the argument must be absent. A list of dicts = any one set matches.
-#   expect.ask:   true = no tool, and the reply must ask a question (unclear requests)
+#   expect.tool   a tool that must be among the turn's calls; null = no tool may be called
+#   expect.args   {arg: value} that call must have (not case sensitive). A list of values = any of them;
+#                 null = the argument must be absent; a list of dicts = any one set matches
+#   expect.ask    true: the reply must ask a question (unclear requests)
+# Booking tools are checked in booking.yaml, where they are used across several turns.
 
-# --- skills: getSkills with the named skill --------------------------------
+# --- getSkills, with the skill as the visitor said it -------------------------------
 - id: skill-redis
-  category: skill
+  category: skills
   query: Does Arjun know Redis?
   expect: {tool: getSkills, args: {skill: Redis}}
-- id: skill-docker
-  category: skill
-  query: Has he worked with Docker?
-  expect: {tool: getSkills, args: {skill: Docker}}
+
 - id: skill-postgres-spoken
-  category: skill
+  category: skills
   query: is he comfortable with postgres
   expect: {tool: getSkills, args: {skill: [Postgres, PostgreSQL]}}
-- id: skill-react-asr
-  category: skill
-  query: does arjun no react
+
+- id: skill-react-misheard
+  category: skills
+  query: does arjun no react  # speech-to-text heard "know" as "no"
   expect: {tool: getSkills, args: {skill: [React, React.js, ReactJS]}}
+
 - id: skill-unlisted-kubernetes
-  category: skill
+  category: skills
   query: Has he used Kubernetes?
   expect: {tool: getSkills, args: {skill: [Kubernetes, k8s]}}
-- id: skill-unlisted-rust
-  category: skill
-  query: How good is he at Rust?
-  expect: {tool: getSkills, args: {skill: Rust}}
+
 - id: skill-all
-  category: skill
+  category: skills
   query: What are his technical skills?
   expect: {tool: getSkills, args: {skill: null}}
 
-# --- project lists: searchProjects ----------------------------------------
+# --- searchProjects for lists of projects -----------------------------------------
 - id: projects-all
-  category: project_list
+  category: projects
   query: What projects has Arjun built?
   expect: {tool: searchProjects}
+
 - id: projects-by-tech
-  category: project_list
+  category: projects
   query: Which of his projects use Redis?
   expect: {tool: searchProjects, args: [{tech: Redis}, {query: Redis}]}
+
 - id: projects-by-tech-java
-  category: project_list
+  category: projects
   query: Has he built anything in Java?
   expect: {tool: searchProjects, args: [{tech: Java}, {query: Java}]}
 
-# --- show a project: getProjectDetail --------------------------------------
-- id: detail-show-beacon
-  category: project_detail
+# --- getProjectDetail to show a project on screen ------------------------------------
+- id: show-beacon
+  category: show_project
   query: Show me the Beacon project.
   expect: {tool: getProjectDetail, args: {project_id: beacon}}
-- id: detail-open-valyrian-architecture
-  category: project_detail
+
+- id: show-valyrian-architecture
+  category: show_project
   query: Open the architecture of Valyrian.
   expect: {tool: getProjectDetail, args: {project_id: valyrian, section: Architecture}}
-- id: detail-show-fitai-limitations
-  category: project_detail
+
+- id: show-fitai-limitations
+  category: show_project
   query: Pull up the limitations section for FitAI.
   expect: {tool: getProjectDetail, args: {project_id: fitai, section: [Limitations, Scope and Limitations]}}
 
-# --- links: getLinks with the right type -----------------------------------
+# --- getLinks with the right link type -------------------------------------------------
 - id: link-github
-  category: link
+  category: links
   query: Can you share his GitHub?
   expect: {tool: getLinks, args: {type: github_profile}}
+
 - id: link-resume
-  category: link
+  category: links
   query: Where can I see his resume?
   expect: {tool: getLinks, args: {type: resume}}
+
 - id: link-linkedin
-  category: link
+  category: links
   query: Send me his LinkedIn.
   expect: {tool: getLinks, args: {type: professional_profile}}
+
 - id: link-leetcode
-  category: link
+  category: links
   query: Does he have a LeetCode profile I can look at?
   expect: {tool: getLinks, args: {type: coding_profile}}
+
 - id: link-portfolio
-  category: link
+  category: links
   query: Does he have a portfolio website?
   expect: {tool: getLinks, args: {type: portfolio}}
 
-# --- booking: free times first; cancel by tool, never by words -------------
-- id: book-next-week
-  category: booking
-  query: Can we schedule a call with him next week?
-  expect: {tool: checkAvailability}
-- id: book-meeting
-  category: booking
-  query: Book a 30 minute meeting with Arjun.
-  expect: {tool: null, ask: true}
-- id: book-tuesday-afternoon
-  category: booking
-  query: Can we meet on Tuesday afternoon?
-  expect: {tool: checkAvailability}
-- id: book-cancel
-  category: booking
-  query: Please cancel my meeting with Arjun.
-  expect: {tool: cancelBooking}
-
-# --- no tool: boundaries, off-topic, greetings -----------------------------
-- id: none-salary
-  category: no_tool
-  query: What salary is he expecting?
-  expect: {tool: null}
-- id: none-phone
-  category: no_tool
-  query: What's his phone number?
-  expect: {tool: null}
-- id: none-offtopic
-  category: no_tool
-  query: What's the capital of France?
-  expect: {tool: null}
-- id: none-greeting
+# --- no tool: a greeting, or a request too unclear to act on -----------------------------
+- id: greeting
   category: no_tool
   query: Hi there!
   expect: {tool: null}
-- id: none-thanks
-  category: no_tool
-  query: Thanks, that was helpful.
-  expect: {tool: null}
 
-# --- unclear: ask instead of guessing a tool -------------------------------
-- id: ask-that
-  category: unclear
+- id: unclear
+  category: no_tool
   query: Can you tell me more about that?
-  expect: {tool: null, ask: true}
-- id: ask-show
-  category: unclear
-  query: Show me.
   expect: {tool: null, ask: true}

@@ -7,6 +7,7 @@ node_modules/
 # Documentation
 phase0-audit.md
 knowledge_base/docs/decisions/phase0-audit.md
+docs/session-handoff.md
 
 
 # Logs & output files
@@ -33,12 +34,13 @@ env/
 venv/
 .venv/
 .pytest_cache/
-data/turn_log.jsonl
-data/bookings.db
+data/
+reports/
 
 
 # Local tooling and tests
-tests
+backend/tests/client_secret.json
+backend/tests/google_auth.py
 CLAUDE.md
 .claude/
 graphify-out/

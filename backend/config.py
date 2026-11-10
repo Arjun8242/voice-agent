@@ -15,7 +15,7 @@ def _load_env() -> None:
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, _, value = line.partition("=")
-                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+                os.environ[key.strip()] = value.strip().strip("\"'") 
             break
 
 

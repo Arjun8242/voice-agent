@@ -3,14 +3,13 @@
 generate_fn yields str pieces (answer text) and dict pieces (a tool call:
 {"name", "args"}). Text leaves the node as custom stream events the moment it
 arrives. If the model asked for tools, the calls go to state and the graph edge
-sends the turn to the tools node; the tools node sends it back here with the
-results in the prompt. Once MAX_TOOL_STEPS calls have run, the model is called
+sends the turn to the tools node; the tools node sends it back here and the
+results go to the model as tool messages (a text copy in the prompt made it repeat the same call). Once MAX_TOOL_STEPS calls have run, the model is called
 without tools, so it has to answer.
 
 CancelledError is never caught here, so a barge-in stops the call immediately.
 """
 
-import json
 import time
 from datetime import datetime
 from functools import lru_cache
@@ -36,10 +35,6 @@ def _excerpt(chunk: dict) -> str:
     return f"[{tag}]\n{chunk['text']}"
 
 
-def _tool_call(call: dict) -> str:
-    return f"{call['name']}({json.dumps(call['args'])}) returned:\n{json.dumps(call['result'], ensure_ascii=False)}"
-
-
 def build_prompt(state: dict, tools_offered: bool = False) -> str:
     messages = state.get("messages", [])
     history = messages[:-1][-HISTORY_ITEMS:]  # the last message is the current query
@@ -59,10 +54,8 @@ def build_prompt(state: dict, tools_offered: bool = False) -> str:
         conversations.append("Excerpts (facts you may state about Arjun):\n\n" + "\n\n".join(_excerpt(c) for c in chunks))
     else:
         conversations.append("No excerpt matched this message. Do not state any fact about Arjun unless a tool result below gives it.")
-    if calls:
-        conversations.append("Tool calls you made this turn and their results (facts you may state about Arjun):\n\n" + "\n\n".join(_tool_call(c) for c in calls))
-        if not tools_offered:
-            conversations.append("You have used all tool calls for this turn. Answer from the facts above.")
+    if calls and not tools_offered:  # the results themselves go to the model as tool messages (rag/llm.py)
+        conversations.append("You have used all tool calls for this turn. Answer from the tool results.")
     #for model to know the context of the conveerstation, we give offered_slots and visitor_timezone
     if state.get("offered_slots"):
         offered = "\n".join(f"{s['slot_id']} = {s['label']}" for s in state["offered_slots"])
@@ -75,8 +68,9 @@ def build_prompt(state: dict, tools_offered: bool = False) -> str:
 
 
 def create_agent_node(generate_fn, tools: list[dict] | None = None):
-    """generate_fn(prompt, system_instruction, tools) -> async iterator of str (text) and dict (tool call) pieces.
-    tools: function declarations ({name, description, parameters}); None means the model gets no tools."""
+    """generate_fn(prompt, system_instruction, tools, tool_calls) -> async iterator of str (text) and dict (tool call) pieces.
+    tools: function declarations ({name, description, parameters}); None means the model gets no tools.
+    tool_calls: the calls already run this turn, each {name, args, result}; None before the first one."""
 
     async def agent_node(state: dict) -> dict:
         write = get_stream_writer()
@@ -91,7 +85,8 @@ def create_agent_node(generate_fn, tools: list[dict] | None = None):
 
         offered = tools if tools and state.get("tool_steps", 0) < MAX_TOOL_STEPS else None
         try:
-            async for piece in generate_fn(build_prompt(state, offered is not None), load_system_prompt(), tools=offered):
+            done = state.get("tool_calls") or None
+            async for piece in generate_fn(build_prompt(state, offered is not None), load_system_prompt(), tools=offered, tool_calls=done):
                 if isinstance(piece, dict):
                     calls.append(piece)
                     continue

@@ -1,0 +1,104 @@
+# Booking a meeting (S13 to S15, S17): from asking for a day to an event existing exactly once.
+# Run: python -m backend.evals.run_booking [--runs 3] [--only <id>]
+#
+# turns: in order. `user: text` goes through the real LLM; `ui: {action, payload}` is a card click.
+#   select_slot takes `slot: 2` (the 2nd time on the latest slots card); every other click gets its
+#   booking_id filled in from the session's booking.
+# fail_next: failures for the fake calendar, each {method, code, after_effect}.
+# expect (every key that is given must hold):
+#   last_tool + args + weekday   the last turn called this tool (null: no tool); args as in routing.yaml; weekday of date_from
+#   covers                       a time (HH:MM) the searched time_from..time_to window must contain
+#   ask                          true: the last reply asks the visitor a question
+#   final_state                  status of the booking at the end (none when no booking was ever started)
+#   calendar_events              how many events the fake calendar holds at the end
+
+# --- asking for a meeting -------------------------------------------------------
+- id: meeting-without-a-day
+  category: asking
+  turns:
+    - user: Book a 30 minute meeting with Arjun.
+  expect: {last_tool: null, ask: true}  # no day or time yet: ask for one, search nothing
+
+- id: cancel-by-voice
+  category: asking
+  turns:
+    - user: Please cancel my meeting with Arjun.
+  expect: {last_tool: cancelBooking}
+
+# --- picking the day and the time over several messages ------------------------
+- id: day-then-time
+  category: multi-turn
+  turns:
+    - user: I'd like to book a meeting with Arjun on Monday.
+    - user: Afternoon.
+  expect: {last_tool: checkAvailability, weekday: Monday, args: {time_from: "12:00"}}
+
+- id: time-then-day
+  category: multi-turn
+  turns:
+    - user: Do you have anything free in the afternoon?
+    - user: Wednesday please.
+  expect: {last_tool: checkAvailability, weekday: Wednesday, args: {time_from: "12:00"}}
+
+- id: exact-time
+  category: multi-turn
+  turns:
+    - user: Can I book a meeting on Monday at 3 PM?
+  expect: {last_tool: checkAvailability, weekday: Monday, args: {time_from: "15:00", time_to: "15:00"}}
+
+- id: exact-time-off-grid
+  category: multi-turn
+  turns:
+    - user: Can I book a meeting on Monday at 3:15 PM?
+  expect: {last_tool: checkAvailability, weekday: Monday, covers: "15:15"}  # any window that contains 15:15 is fine
+
+# --- the whole flow: final state and event count -------------------------------
+- id: book-full-flow
+  category: booking
+  turns:
+    - user: Can we meet next Tuesday afternoon?
+    - user: Book the first one please.
+    - ui: {action: submit_details, payload: {name: Test Person, email: test.person@example.com}}
+    - ui: {action: confirm}
+  expect: {final_state: confirmed, calendar_events: 1}
+
+- id: book-double-confirm
+  category: booking
+  turns:
+    - user: Can we meet next Tuesday afternoon?
+    - user: Book the first one please.
+    - ui: {action: submit_details, payload: {name: Test Person, email: test.person@example.com}}
+    - ui: {action: confirm}
+    - ui: {action: confirm}
+  expect: {final_state: confirmed, calendar_events: 1}
+
+- id: book-timeout-after-create
+  category: booking
+  fail_next: [{method: create_event, code: timeout, after_effect: true}]
+  turns:
+    - user: Can we meet next Tuesday afternoon?
+    - user: Book the first one please.
+    - ui: {action: submit_details, payload: {name: Test Person, email: test.person@example.com}}
+    - ui: {action: confirm}
+  expect: {final_state: confirmed, calendar_events: 1}
+
+- id: book-calendar-down
+  category: booking
+  fail_next: [{method: create_event, code: timeout}, {method: create_event, code: timeout}]
+  turns:
+    - user: Can we meet next Tuesday afternoon?
+    - user: Book the first one please.
+    - ui: {action: submit_details, payload: {name: Test Person, email: test.person@example.com}}
+    - ui: {action: confirm}
+  expect: {final_state: failed, calendar_events: 0}
+
+- id: book-then-cancel
+  category: booking
+  turns:
+    - user: Can we meet next Tuesday afternoon?
+    - user: Book the first one please.
+    - ui: {action: submit_details, payload: {name: Test Person, email: test.person@example.com}}
+    - ui: {action: confirm}
+    - user: Please cancel my meeting.
+    - ui: {action: confirm_cancel}
+  expect: {final_state: cancelled, calendar_events: 0}
