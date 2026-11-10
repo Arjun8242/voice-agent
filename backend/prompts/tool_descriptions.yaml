@@ -47,6 +47,6 @@ cancelBooking: >
 
 getLinks: >
   Show one of Arjun's profile links on screen: portfolio, resume, GitHub,
-  LinkedIn or a coding profile. Use it when the visitor asks for a link,
+  LinkedIn, X (Twitter) or a coding profile. Use it when the visitor asks for a link,
   profile, resume or where to see his code. For details about a project, use
   getProjectDetail.

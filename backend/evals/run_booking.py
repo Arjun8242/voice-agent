@@ -92,7 +92,7 @@ async def run_case(case: dict, n: int, kb, sched, retrieve, generate, aliases) -
     graph = build_graph(retrieve, generate, aliases, registry=registry, gate=create_booking_gate_node(store, calendar, sched))
     executor = BookingExecutor(store, calendar, sched)
 
-    session, slots, booking_id, turn = f"booking-{case['id']}-{n}", [], None, {}
+    session, slots, booking_id, turn, errors = f"booking-{case['id']}-{n}", [], None, {}, []
     tz = case.get("timezone", EVAL_TZ)  # the visitor's timezone; the host's stays Asia/Kolkata
     for step in case["turns"]:
         if "user" in step:
@@ -104,6 +104,7 @@ async def run_case(case: dict, n: int, kb, sched, retrieve, generate, aliases) -
             elif booking_id:
                 payload["booking_id"] = booking_id
             turn = await run_turn(graph, session, "", ui_action={"action": step["ui"]["action"], "payload": payload}, visitor_timezone=tz)
+        errors += turn["errors"]
         if turn["booking_execute"]:
             await executor.run(turn["booking_execute"]["booking_id"], turn["booking_execute"]["kind"])
         for card in turn["cards"]:
@@ -113,7 +114,9 @@ async def run_case(case: dict, n: int, kb, sched, retrieve, generate, aliases) -
         booking_id = booking["booking_id"] if booking else booking_id
     final_state = store.get(booking_id)["status"] if booking_id else None
     r = evaluate(case, turn, final_state, len(calendar.events))
-    r["calls"], r["reply"], r["errors"] = [c["name"] for c in turn["tool_calls"]], turn["reply"], turn["errors"]
+    r["calls"], r["reply"], r["errors"] = [c["name"] for c in turn["tool_calls"]], turn["reply"], errors
+    if errors:  # any turn, not just the last: a dead model can still "pass" checks like calendar_events == 0
+        r["passed"], r["note"] = False, f"the model failed during the run: {errors[0][:140]}"
     return r
 
 
