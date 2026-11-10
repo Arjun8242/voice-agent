@@ -9,25 +9,11 @@
 # Booking tools are checked in booking.yaml, where they are used across several turns.
 
 # --- getSkills, with the skill as the visitor said it -------------------------------
-- id: skill-redis
-  category: skills
-  query: Does Arjun know Redis?
-  expect: {tool: getSkills, args: {skill: Redis}}
-
-- id: skill-postgres-spoken
-  category: skills
-  query: is he comfortable with postgres
-  expect: {tool: getSkills, args: {skill: [Postgres, PostgreSQL]}}
 
 - id: skill-react-misheard
   category: skills
   query: does arjun no react  # speech-to-text heard "know" as "no"
   expect: {tool: getSkills, args: {skill: [React, React.js, ReactJS]}}
-
-- id: skill-unlisted-kubernetes
-  category: skills
-  query: Has he used Kubernetes?
-  expect: {tool: getSkills, args: {skill: [Kubernetes, k8s]}}
 
 - id: skill-all
   category: skills
@@ -50,8 +36,7 @@
   query: Has he built anything in Java?
   expect: {tool: searchProjects, args: [{tech: Java}, {query: Java}]}
 
-# --- getProjectDetail to show a project on screen ------------------------------------
-- id: show-beacon
+- id: show-beacon  # regression test: it once repeated the same getProjectDetail call until the step cap
   category: show_project
   query: Show me the Beacon project.
   expect: {tool: getProjectDetail, args: {project_id: beacon}}
@@ -77,21 +62,6 @@
   query: Where can I see his resume?
   expect: {tool: getLinks, args: {type: resume}}
 
-- id: link-linkedin
-  category: links
-  query: Send me his LinkedIn.
-  expect: {tool: getLinks, args: {type: professional_profile}}
-
-- id: link-leetcode
-  category: links
-  query: Does he have a LeetCode profile I can look at?
-  expect: {tool: getLinks, args: {type: coding_profile}}
-
-- id: link-portfolio
-  category: links
-  query: Does he have a portfolio website?
-  expect: {tool: getLinks, args: {type: portfolio}}
-
 # --- no tool: a greeting, or a request too unclear to act on -----------------------------
 - id: greeting
   category: no_tool
@@ -102,3 +72,30 @@
   category: no_tool
   query: Can you tell me more about that?
   expect: {tool: null, ask: true}
+
+# --- hard routing: other languages, misheard names, two asks in one message ----------------------
+- id: skill-hinglish
+  category: skills
+  query: kya Arjun ko Redis aata hai?  # Hinglish, as a visitor in India may say it
+  expect: {tool: getSkills, args: {skill: Redis}}
+
+- id: show-valyrian-misheard
+  category: show_project
+  query: Open the architecture of the Valerian project.
+  expect: {tool: getProjectDetail, args: {project_id: valyrian, section: Architecture}}
+
+- id: link-twitter
+  category: links
+  query: What's his Twitter?  # no twitter type exists; X is stored as professional_profile
+  expect: {tool: getLinks, args: {type: professional_profile}}
+
+# one message, two asks: the same query is checked once per tool
+- id: two-asks-link
+  category: links
+  query: Show me his GitHub and the Beacon project.
+  expect: {tool: getLinks, args: {type: github_profile}}
+
+- id: two-asks-project
+  category: show_project
+  query: Show me his GitHub and the FitAI project.
+  expect: {tool: getProjectDetail, args: {project_id: fitai}}

@@ -28,7 +28,7 @@ FILES = {"routing": EVALS / "routing.yaml", "unanswerable": EVALS / "unanswerabl
 THRESHOLDS = EVALS / "thresholds.yaml"
 KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
 TOOLS = {"searchProjects", "getProjectDetail", "getSkills", "getLinks", "checkAvailability", "startBooking", "cancelBooking"}
-KEYS = {"tool", "args", "ask", "must_include_any", "refuses", "must_not_match"}
+KEYS = {"tool", "args", "ask", "must_include_any", "must_include_all", "refuses", "must_not_match"}
 FALLBACK = "trouble answering"  # the agent's error reply (graph/nodes/agent.py): a turn that returns it answered nothing
 # shortcut: a refusal is spotted by these phrases, so one worded differently fails; upgrade to an LLM judge if that happens often
 REFUSALS = ["don't have", "do not have", "doesn't list", "does not list", "not listed", "no information", "can only speak",
@@ -106,6 +106,8 @@ def evaluate(case: dict, turn: dict) -> dict:
         problems.append("expected a clarifying question")
     if "must_include_any" in expect and not any(w.lower() in lower for w in expect["must_include_any"]):
         problems.append(f"reply has none of {expect['must_include_any']}")
+    if "must_include_all" in expect and not all(w.lower() in lower for w in expect["must_include_all"]):
+        problems.append(f"reply is missing one of {expect['must_include_all']}")
     if expect.get("refuses") and not any(p in lower for p in REFUSALS):
         problems.append("reply does not refuse")
     if "must_not_match" in expect and re.search(expect["must_not_match"], reply):
@@ -141,7 +143,10 @@ async def run(cases: list[dict], runs: int) -> list[dict]:
     results = []
     for case in cases:
         for n in range(runs):
-            turn = await run_turn(graph, session_id=f"questions-{case['id']}-{n}", text=case["query"])
+            session = f"questions-{case['id']}-{n}"
+            for text in case.get("before", []):  # earlier visitor messages in the same session
+                await run_turn(graph, session_id=session, text=text)
+            turn = await run_turn(graph, session_id=session, text=case["query"])
             r = evaluate(case, turn)
             r["reply"], r["errors"] = turn["reply"], turn["errors"]
             results.append(r)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import re
 import sys
 import tempfile
 from datetime import date
@@ -65,6 +66,8 @@ def evaluate(case: dict, last_turn: dict, final_state: str | None, events: int) 
                     day = None
                 if str(day).lower() != str(expect["weekday"]).lower():
                     problems.append(f"expected {expect['weekday']}, date_from was {args.get('date_from')} ({day})")
+    if "must_not_match" in expect and re.search(expect["must_not_match"], last_turn.get("reply", "")):
+        problems.append(f"reply matches {expect['must_not_match']!r}")
     if "final_state" in expect and final_state != expect["final_state"]:
         problems.append(f"final state {final_state}, expected {expect['final_state']}")
     if "calendar_events" in expect and events != expect["calendar_events"]:
@@ -90,16 +93,17 @@ async def run_case(case: dict, n: int, kb, sched, retrieve, generate, aliases) -
     executor = BookingExecutor(store, calendar, sched)
 
     session, slots, booking_id, turn = f"booking-{case['id']}-{n}", [], None, {}
+    tz = case.get("timezone", EVAL_TZ)  # the visitor's timezone; the host's stays Asia/Kolkata
     for step in case["turns"]:
         if "user" in step:
-            turn = await run_turn(graph, session, step["user"], visitor_timezone=EVAL_TZ)
+            turn = await run_turn(graph, session, step["user"], visitor_timezone=tz)
         else:
             payload = dict(step["ui"].get("payload") or {})
             if "slot" in payload:
                 payload["slot_id"] = slots[payload.pop("slot") - 1]
             elif booking_id:
                 payload["booking_id"] = booking_id
-            turn = await run_turn(graph, session, "", ui_action={"action": step["ui"]["action"], "payload": payload}, visitor_timezone=EVAL_TZ)
+            turn = await run_turn(graph, session, "", ui_action={"action": step["ui"]["action"], "payload": payload}, visitor_timezone=tz)
         if turn["booking_execute"]:
             await executor.run(turn["booking_execute"]["booking_id"], turn["booking_execute"]["kind"])
         for card in turn["cards"]:
