@@ -1,6 +1,6 @@
 """S6: run the smoke set against the retriever.
 
-    python -m evals.run_smoke [--k 4] [--index data/kb_index.json] [--file evals/smoke.yaml]
+    python -m backend.evals.run_smoke [--k 4] [--index data/kb_index.json] [--file backend/evals/smoke.yaml]
 
 The retriever drops chunks below MIN_SCORE before returning them, which hides the
 scores you need for tuning. So this runner turns the threshold off, fetches the raw

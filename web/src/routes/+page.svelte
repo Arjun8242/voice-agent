@@ -24,7 +24,7 @@
   // Turn whose answer the server has finished sending; its audio may still be playing here.
   let doneTurn = 0;
   let errorMsg = $state('');
-  let metrics = $state<{ ttfaMs?: number; ragMs?: number; geminiTtftMs?: number; totalMs?: number }>({});
+  let metrics = $state<{ ttfaMs?: number; ragMs?: number; llmTtftMs?: number; totalMs?: number }>({});
 
   let ws: WebSocket | null = null;
   let audioEl: HTMLAudioElement;
@@ -121,7 +121,7 @@
 
         case 'metric':
           if (msg.stage === 'rag_complete') metrics.ragMs = msg.ragLatencyMs;
-          if (msg.stage === 'gemini_first_token') metrics.geminiTtftMs = msg.ttftMs;
+          if (msg.stage === 'llm_first_token') metrics.llmTtftMs = msg.ttftMs;
           break;
 
         case 'tts_end':
@@ -333,8 +333,8 @@
           {#if metrics.ragMs !== undefined}
             {@render Metric({ label: 'RAG', value: `${metrics.ragMs}ms` })}
           {/if}
-          {#if metrics.geminiTtftMs !== undefined}
-            {@render Metric({ label: 'LLM TTFT', value: `${metrics.geminiTtftMs}ms` })}
+          {#if metrics.llmTtftMs !== undefined}
+            {@render Metric({ label: 'LLM TTFT', value: `${metrics.llmTtftMs}ms` })}
           {/if}
           {#if metrics.ttfaMs !== undefined}
             {@render Metric({ label: 'First Audio', value: `${metrics.ttfaMs}ms`, highlight: true })}

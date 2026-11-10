@@ -34,7 +34,7 @@ Browser (SvelteKit)
       v
 Python backend (asyncio)
   server: sessions, turn manager (turn IDs, barge-in)
-  pipeline: STT in, TTS out     providers: Sarvam, Gemini
+  pipeline: STT in, TTS out     providers: Sarvam, Groq
       |  in-process call per turn
       v
 Agent graph (LangGraph)
@@ -127,7 +127,7 @@ One state object per session, checkpointed in memory after each step; the bookin
 | `ingest_turn` | code | Appends the input, resets per-turn fields, updates topic, picks the next node |
 | `booking_gate` | code | Handles input while a booking is waiting: form submit, confirm, cancel, and the yes or no to a cancel request |
 | `retrieve` | code | Topic-aware dense search with a relevance threshold (hybrid only if later tests justify it) |
-| `agent` | LLM | One Gemini call with tools bound; returns text or tool calls |
+| `agent` | LLM | One Groq call with tools bound; returns text or tool calls |
 | `tools` | code | Validates and runs tool calls (read-only ones in parallel), adds cards |
 | `booking_execute` | code, session-owned task | Starts the create (re-check, read event by id, create, read back) or the delete of a confirmed booking, and reports through `booking.update` (section 4.5) |
 | `respond` | code | Chooses the model's text, or a template for booking outcomes; streams it |
@@ -377,7 +377,7 @@ voice-agent/
     config.py
     server/            existing: WebSocket handling, sessions, turn manager (turn IDs, barge-in)
     pipeline/          existing: STT, turn handling, TTS streaming
-    providers/         existing: Sarvam and Gemini clients
+    providers/         existing: Sarvam and Groq clients
     rag/               existing: current RAG retriever and services
     kb/                existing: loaders, validate, ingest
     graph/             state.py, builder.py, nodes/

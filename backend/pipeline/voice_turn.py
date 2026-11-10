@@ -150,7 +150,7 @@ async def voice_turn(
                     if not first_token:
                         first_token = True
                         marks["first_token_ms"] = elapsed()
-                        await send("metric", {"stage": "gemini_first_token", "ttftMs": elapsed()})
+                        await send("metric", {"stage": "llm_first_token", "ttftMs": elapsed()})
 
                     await send("assistant_text", {"text": token})
 
