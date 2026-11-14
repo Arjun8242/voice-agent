@@ -48,8 +48,9 @@ async def speak_sentence(
     elapsed: Callable[[], int],
     on_audio: Callable[[], None],
     tts_client: httpx.AsyncClient,
+    speaker: str = "",
 ) -> None:
-    """TTS one sentence. Always fires tts_end in finally."""
+    """TTS one sentence in the given voice ("" = the default). Always fires tts_end in finally."""
     id_buf = struct.pack("<I", sentence_id)
     produced_first = False
 
@@ -62,7 +63,7 @@ async def speak_sentence(
                 produced_first = True
                 on_audio()
 
-        await stream_tts(text, interrupt_event, on_chunk, tts_client)
+        await stream_tts(text, interrupt_event, on_chunk, tts_client, speaker)
 
     except asyncio.CancelledError:
         raise
@@ -90,6 +91,9 @@ async def voice_turn(
     visitor_timezone: str = "",
     ui_action: dict | None = None,
     on_booking_execute: Callable[[dict], None] | None = None,
+    persona: str = "",
+    speaker: str = "",
+    nudge: int | None = None,
 ) -> None:
     """Run one turn through the graph. Cancellable via task cancellation or interrupt_event.
 
@@ -99,6 +103,8 @@ async def voice_turn(
     the graph adds it to the history ahead of this question.
     timings: stages measured before this turn started (turn_id, stt_ms, wait_ms). When given, the
     turn's stage times are added and one line is written to the turn log (observability/timings.py).
+    persona and speaker are for interview mode: the persona goes to the graph, the speaker (its voice) to TTS.
+    nudge (interview mode): this turn says the nudge line with that index instead of answering speech.
     """
 
     t0 = time.perf_counter()
@@ -135,11 +141,13 @@ async def voice_turn(
             first_audio, elapsed,
             lambda: setattr(state, "agent_speaking", True),
             tts_client,
+            speaker,
         ))
 
     try:
         async with asyncio.TaskGroup() as tg:
-            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone, ui_action):
+            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone, ui_action,
+                                                 persona, nudge):
                 if mode == "values":  # state after each step: only the tool calls are needed here
                     tools_used = [c["name"] for c in event.get("tool_calls", [])]
                     continue

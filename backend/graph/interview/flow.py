@@ -1,6 +1,6 @@
 """flow.py: the code that moves an interview along. No LLM (docs/interviewer-mode-plan.md §6.3, B7).
 
-steer    before the model call: end, repeat, move to the next topic, or ask the model
+steer    before the model call: end, repeat, nudge, move to the next topic, or ask the model
 advance  after the model call: count the follow-up and climb the ladder, or move on; record the answer
 close    the closing line, with no model call
 
@@ -49,12 +49,14 @@ def choose_route(state: dict, topic_ids: list[str], elapsed_s: float, max_second
     intent = state.get("intent", "answer")
     persona = get_persona(state.get("persona"))
     pending = pending_answer(state, topic_ids)
+    if intent == "nudge":
+        return {"route": "nudge"}  # before the finished check: a nudge after the end says nothing, not the closing
     if state.get("finished") or intent == "end":
         return {"route": "close"}
     if intent == "answer" and elapsed_s >= max_seconds:
         return {"route": "close", "pending_answer": pending}
-    if intent == "repeat" and state.get("last_question"):
-        return {"route": "repeat"}
+    if intent in ("repeat", "start") and state.get("last_question"):
+        return {"route": "repeat"}  # "start" after a question was asked is a reconnect: ask it again, not a new opening
     declined_hint = intent == "hint" and not persona.gives_hints
     if intent == "skip" or declined_hint:
         index = state.get("topic_index", 0) + 1

@@ -141,7 +141,7 @@ class Harness:
         await self.until(lambda: len(self.of_type("tts_end")) >= count, f"{count} spoken sentences")
 
 
-def run(scenario, model, registry=None, graph=None):
+def run(scenario, model, registry=None, graph=None, interview_graph=None, evaluator=None):
     """Start a connection on a fresh graph (or the given one), run the scenario coroutine, then disconnect."""
     async def main():
         ws, holder = FakeWebSocket(), []
@@ -149,7 +149,8 @@ def run(scenario, model, registry=None, graph=None):
         graph = graph or build_graph(no_retrieval, model, aliases={}, registry=registry)
         original = connection.create_stt
         connection.create_stt = lambda handlers: holder.append(FakeStt(handlers)) or holder[-1]
-        task = asyncio.create_task(connection.handle_connection(ws, None, graph))
+        task = asyncio.create_task(connection.handle_connection(ws, None, graph, interview_graph=interview_graph,
+                                                                evaluator=evaluator))
         try:
             h = Harness(ws, holder, task, model)
             await h.until(lambda: holder, "the connection to start")
@@ -163,7 +164,7 @@ def run(scenario, model, registry=None, graph=None):
 
 @pytest.fixture(autouse=True)
 def fake_tts(monkeypatch):
-    async def stream_tts(text, interrupt_event, on_chunk, client):
+    async def stream_tts(text, interrupt_event, on_chunk, client, speaker=""):
         await on_chunk(b"mp3")
     # backend/__init__.py puts backend/ on sys.path, so connection may hold the top-level copy
     # (pipeline.voice_turn) instead of backend.pipeline.voice_turn. Patch the copy it really uses.
@@ -354,7 +355,7 @@ def test_10_after_playback_ended_speech_is_a_new_question_not_a_barge_in():
 def test_11_cut_in_while_the_last_sentence_is_still_spoken_does_not_keep_two_answers(monkeypatch):
     model = GatedModel([f"{FIRST} ", f"{SECOND} "], ["Fine."])
 
-    async def slow_tts(text, interrupt_event, on_chunk, client):
+    async def slow_tts(text, interrupt_event, on_chunk, client, speaker=""):
         await on_chunk(b"mp3")
         if SECOND in text:
             await asyncio.sleep(1.5)  # the graph has finished and saved the answer; speech is not done

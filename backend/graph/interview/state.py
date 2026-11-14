@@ -3,7 +3,8 @@
 Persisted per session by the checkpointer (thread_id = session_id):
     messages, persona, topic_index, level, followups_used, last_question, started_at, finished, answers
 Reset at the start of every turn by the interview ingest node:
-    intent, mode, route, pending_answer, final_text, decision, tag_ok, errors, interrupted_reply
+    intent, mode, route, pending_answer, final_text, decision, tag_ok, errors, interrupted_reply,
+    nudge, nudge_index
 
 The topics themselves are not stored here: they are the same for every session (interview/plan.py),
 so the graph keeps them and the state holds only topic_index.
@@ -33,6 +34,7 @@ class InterviewState(TypedDict, total=False):
     interrupted_reply: str  # input: heard part of the interviewer's last turn after a barge-in
     ui_action: dict | None  # input: sent by the shared runner; cards do not exist in interviews, so it is ignored
     visitor_timezone: str  # input: sent by the shared runner; unused by the interview
+    nudge: int | None  # input: the candidate stayed silent; which nudge to say (interview/personas.py)
     persona: str  # input on the first turn: "neutral" or "strict" (interview/personas.py); persisted
     messages: Annotated[list[AnyMessage], add_messages]
     topic_index: int  # which topic of the plan is being discussed
@@ -42,9 +44,10 @@ class InterviewState(TypedDict, total=False):
     finished: bool  # the closing line was spoken; every later turn gets it again
     answers: list[Answer]  # every answer so far, recorded only when its turn completes
     last_question: str  # the interviewer's last spoken turn, replayed on "repeat that" without the LLM
-    intent: str  # this turn: answer, repeat, hint, rephrase, skip, end, or "start" for the opening
+    intent: str  # this turn: answer, repeat, hint, rephrase, skip, end, "start" for the opening, or "nudge"
+    nudge_index: int | None  # this turn's nudge, copied from the input so the input can be cleared
     mode: str  # what the interviewer does: start, answer, hint, rephrase, new_topic or skip (prompt.py)
-    route: str  # the steer node's choice: interviewer, repeat or close
+    route: str  # the steer node's choice: interviewer, repeat, close or nudge
     pending_answer: Answer | None  # this turn's answer, moved into answers once the turn completes
     final_text: str  # what the interviewer said this turn (tag removed)
     decision: str  # the model's control-tag decision this turn; "next" when the tag was missing

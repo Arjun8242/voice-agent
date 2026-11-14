@@ -6,6 +6,11 @@
   import ProjectCard from '$lib/components/ProjectCard.svelte';
   import LinkCard from '$lib/components/LinkCard.svelte';
   import BookingCard from '$lib/components/BookingCard.svelte';
+  import InterviewControls from '$lib/components/InterviewControls.svelte';
+  import InterviewReport from '$lib/components/InterviewReport.svelte';
+  import {
+    endInterviewMessage, reportStateFrom, startInterviewMessage, type Mode, type PersonaName, type ReportState,
+  } from '$lib/interview';
   import Mic from '@lucide/svelte/icons/mic';
   import MicOff from '@lucide/svelte/icons/mic-off';
   import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -31,6 +36,11 @@
   let ws: WebSocket | null = null;
   let audioEl: HTMLAudioElement;
   let micActive = $state(false);
+  let mode = $state<Mode>('recruiter');
+  let persona = $state<PersonaName>('neutral');
+  let interviewStarted = $state(false);
+  let interviewEnded = $state(false);
+  let reportState = $state<ReportState | null>(null);
 
   const WS_URL = 'ws://localhost:3001';
 
@@ -53,6 +63,27 @@
     assistantText = '';
     status = 'thinking';
     ws.send(JSON.stringify({ type: 'ui_action', action, payload }));
+  }
+
+  // ── Interview mode ────────────────────────────────────────────────────────
+  // Start is a click, so the browser lets the interviewer's opening question play.
+  function startInterview() {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    // toggleMic resets playback before its first await; the server gets start_interview before any audio,
+    // so its STT opens with the interview's longer silence.
+    if (!micActive) void toggleMic();
+    ws.send(startInterviewMessage(persona));
+    interviewStarted = true;
+    status = 'thinking';
+  }
+
+  function endInterview() {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    ws.send(endInterviewMessage());
+    if (micActive) void toggleMic(); // the mic stops; the closing line still plays
+    interviewEnded = true;
+    // the finished interview stays on this session id: forgetting it lets a reload start a new interview
+    sessionStorage.removeItem('sessionId');
   }
 
   // ── WebSocket ─────────────────────────────────────────────────────────────
@@ -96,6 +127,11 @@
 
         case 'transcript_partial':
           partialText = msg.text;
+          break;
+
+        case 'interview_report':
+          // No turnId: it arrives whenever the evaluator finishes, after the interview's last turn.
+          reportState = reportStateFrom(msg.status, msg.report) ?? reportState;
           break;
 
         case 'turn_state':
@@ -251,6 +287,15 @@
     <p class="text-sm text-[hsl(215,20%,55%)] mt-1">Low-latency RAG voice assistant</p>
   </div>
 
+  <InterviewControls
+    bind:mode
+    bind:persona
+    started={interviewStarted}
+    ended={interviewEnded}
+    onstart={startInterview}
+    onend={endInterview}
+  />
+
   <!-- Status badge -->
   <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-colors duration-200 {statusColor[status]}">
     {#if status === 'listening'}
@@ -291,6 +336,10 @@
 
   <!-- Cards -->
   <div class="w-full max-w-2xl flex flex-col gap-4">
+    {#if reportState}
+      <InterviewReport state={reportState} />
+    {/if}
+
 
     <!-- Partial transcript -->
     {#if partialText}

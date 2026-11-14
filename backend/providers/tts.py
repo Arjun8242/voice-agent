@@ -50,8 +50,12 @@ async def stream_tts(
     interrupt_event: asyncio.Event,
     on_chunk: Callable[[bytes], Awaitable[None]],
     client: httpx.AsyncClient,
+    speaker: str = "",
 ) -> None:
-    """Generate speech and pass each audio chunk to an async callback."""
+    """Generate speech and pass each audio chunk to an async callback.
+
+    speaker: a Sarvam bulbul:v3 voice (an interview persona's); "" uses TTS_SPEAKER.
+    """
 
     headers = {
         "Content-Type": "application/json",
@@ -62,7 +66,7 @@ async def stream_tts(
         "text": text,
         "language_code": TTS_LANGUAGE,
         "model": TTS_MODEL,
-        "speaker": TTS_SPEAKER,
+        "speaker": speaker or TTS_SPEAKER,
         "output_audio_codec": TTS_OUTPUT_FORMAT,
     }
 

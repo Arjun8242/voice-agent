@@ -74,6 +74,9 @@ Eval runner --> POST /internal/turn (text mode, no voice)
 | `ui.card` / `ui.card.dismiss` | server to client | turn\_id, card\_id, type, data |
 | `ui.action` | client to server | action (select\_slot, submit\_details, confirm, cancel\_booking, confirm\_cancel, keep\_booking), payload |
 | `booking.update` | server to client | booking\_id, status, card data; no turn\_id |
+| `interview.start` | client to server | persona (`neutral` or `strict`). Sent by the Start click, so the browser allows the interviewer's audio. Switches the connection to the interview graph, its hold times, its STT silence and the persona's voice, then the interviewer asks its opening question (on a reconnect, the last question again). Card clicks are ignored from then on |
+| `interview.end` | client to server | none. The End click: the same turn as saying "let's end the interview", so the interviewer speaks its closing line; a question still being asked is cut off first |
+| `interview.report` | server to client | status: pending, ready (with the report: a 1-5 score per answer, correct, missing and incorrect points quoted from the notes, unverifiable claims, 3 tips) or failed. Sent once, when the interview ends however it ends; no turn\_id |
 | `turn.state` | server to client | state: speaking, holding, thinking or idle (the end-of-turn controller in `pipeline/turn_taking.py`); no turn\_id |
 | `turn.cancelled` / `error` | server to client | turn\_id / code, message, retryable |
 
@@ -435,5 +438,19 @@ Order: Phase 0 (S1). Phase 1, knowledge base and retrieval v1 (S2 to S6). Phase 
 | Content work underestimated | Treat S2 and S17 as first-class tasks |
 
 Settled: D1, the backend is Python. Open decisions: D3 RAG versus a full-context prompt, decided by one eval run. D4 index storage: in-memory files by default, pgvector only if needed. D5 reranker or output verifier: only on evidence.
+
+## 13. Interview mode
+
+A second graph, `graph/interview/`, runs a spoken mock interview about the same projects. The audit and design are in `docs/interviewer-mode-plan.md`; the build steps are in `docs/interviewer-mode-features.md`. It shares the voice pipeline, barge-in, heard-history (`heard_history` in `nodes/ingest.py`), the Groq client and the turn log with the recruiter graph, and nothing else: no retrieval, no tools, no booking.
+
+| Node | LLM | Job |
+| --- | --- | --- |
+| `ingest` | no | Records the turn, applies heard-history, classifies the intent by fixed phrases (`interview/intents.py`) |
+| `steer` | no | Decides the turn: end, repeat, nudge, move to the next topic, or ask the model. Enforces the follow-up cap before the call |
+| `interviewer` | yes | One streamed call. The reply starts with a control tag (`[[decision=probe]]`) that `tag.py` strips before anything is spoken |
+| `advance` | no | Counts the follow-up and climbs the ladder, or moves topic; records the answer only now, so a cut-off turn is never graded |
+| `repeat`, `nudge`, `close` | no | The last question again, a persona's fixed nudge line, the closing line |
+
+Turn-taking sits outside both graphs, in `pipeline/turn_taking.py`: final transcripts are held and merged until the speaker is done. The hold depends on how the last transcript ended, and new speech cancels it. Interview mode uses longer holds and a longer Sarvam end-of-speech silence. The end-of-interview report (`interview/evaluate.py`) is one more call, owned by the connection like a booking. Every quote it returns is checked against the topic's notes before the browser sees it.
 
 Terms: idempotency means repeating a request leaves one result. A checkpoint is the saved graph state. recall@k is how often a relevant chunk is in the top k. MRR is the average of 1 over the rank of the first relevant chunk. p50 and p95 are the median and 95th-percentile latency. Reciprocal rank fusion merges two ranked lists by position.

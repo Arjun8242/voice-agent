@@ -46,12 +46,14 @@ async def stream_text(
     system_instruction: str,
     tools: list[dict] | None = None,
     tool_calls: list[dict] | None = None,
+    max_tokens: int = MAX_OUTPUT_TOKENS,
 ) -> AsyncIterator[str | dict]:
     """Yield Groq output as it arrives. Used by the graph's agent node.
 
     Text is yielded as str; each tool call, once its arguments are complete, as {"name": ..., "args": {...}};
     last, an LlmUsage with the tokens Groq reports in its final chunk (none if it reports nothing).
     tools are declarations {name, description, parameters (JSON schema)}.
+    max_tokens caps the output, reasoning included; the interview report needs more than a spoken turn.
     tool_calls are the calls already run this turn, each {name, args, result}. They are sent as an assistant
     message plus one tool message per call: results pasted into the prompt as text did not count as done for
     the model, so it asked for the same call again until the step cap.
@@ -70,7 +72,7 @@ async def stream_text(
         model=GROQ_MODEL,
         messages=messages,
         temperature=0.3,
-        max_completion_tokens=MAX_OUTPUT_TOKENS,
+        max_completion_tokens=max_tokens,
         reasoning_effort=REASONING_EFFORT,
         stream=True,
         **extra,

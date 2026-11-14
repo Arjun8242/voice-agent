@@ -34,7 +34,10 @@ except (ImportError, ModuleNotFoundError):
     from backend.tools.kb_data import load_kb_data, load_scheduling
     from backend.tools.registry import build_registry
 
+from functools import partial
+
 from backend.graph.interview.graph import build_interview_graph
+from backend.interview.evaluate import EVALUATOR_MAX_TOKENS, evaluate_interview
 from backend.interview.plan import build_plan
 
 KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
@@ -55,7 +58,10 @@ async def lifespan(app: FastAPI):
     app.state.graph = build_graph(
         retrieve_fn=retrieve, generate_fn=stream_text, aliases=project_aliases(), registry=registry, gate=gate,
     )
-    app.state.interview_graph = build_interview_graph(stream_text, build_plan(kb))
+    topics = build_plan(kb)
+    app.state.interview_graph = build_interview_graph(stream_text, topics)
+    app.state.evaluator = partial(evaluate_interview, topics=topics,
+                                  generate_fn=partial(stream_text, max_tokens=EVALUATOR_MAX_TOKENS))
     app.state.tts_client = create_tts_client()
     await asyncio.gather(
         warm_llm(),
@@ -76,4 +82,5 @@ async def health_check() -> dict:
 
 @app.websocket("/")
 async def websocket_endpoint(ws: WebSocket) -> None:
-    await handle_connection(ws, ws.app.state.tts_client, ws.app.state.graph, ws.app.state.executor)
+    await handle_connection(ws, ws.app.state.tts_client, ws.app.state.graph, ws.app.state.executor,
+                            interview_graph=ws.app.state.interview_graph, evaluator=ws.app.state.evaluator)

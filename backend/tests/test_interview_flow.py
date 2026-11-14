@@ -145,6 +145,12 @@ def test_every_turn_after_the_end_gets_the_closing_line_without_the_model():
     assert len(state["answers"]) == 2  # nothing is graded after the end
 
 
+def test_an_opening_request_after_a_question_replays_it_without_the_model():
+    interview = opened()
+    spoken, state = interview.say("")  # the page reconnected and pressed Start again
+    assert spoken == OPENING and len(interview.model.calls) == 1 and state["topic_index"] == 0
+
+
 # --- skip, end and hints ------------------------------------------------------------------------
 
 def test_skip_moves_to_the_next_topic_and_records_nothing():
@@ -244,6 +250,7 @@ def test_an_answer_whose_turn_was_cut_off_is_not_recorded():
 @pytest.mark.parametrize("state, route, mode", [
     ({"intent": "repeat"}, "interviewer", "answer"),  # nothing asked yet: the model handles it
     ({"intent": "repeat", "last_question": "Q?"}, "repeat", None),
+    ({"intent": "start", "last_question": "Q?"}, "repeat", None),  # a reconnect asks the question again
     ({"intent": "start"}, "interviewer", "start"),
     ({"intent": "rephrase", "last_question": "Q?"}, "interviewer", "rephrase"),
     ({"intent": "answer", "finished": True}, "close", None),
@@ -256,3 +263,44 @@ def test_choose_route(state, route, mode):
 def test_an_answer_with_no_question_asked_yet_is_not_recorded():
     update = choose_route({"intent": "answer", "query": "hi"}, ["beacon"], elapsed_s=0, max_seconds=600)
     assert update["pending_answer"] is None
+
+
+# --- nudges (C3) --------------------------------------------------------------------------------
+
+def test_a_nudge_says_the_personas_line_without_the_model_and_keeps_the_question():
+    from backend.interview.personas import NEUTRAL
+    interview = opened()
+    spoken, state = interview.say("", nudge=0)
+    assert spoken == NEUTRAL.nudges[0] and len(interview.model.calls) == 1
+    assert state["last_question"] == OPENING and state["messages"][-1].content == NEUTRAL.nudges[0]
+    assert [m.type for m in state["messages"]] == ["ai", "ai"]  # no empty candidate message
+    assert (state["topic_index"], state["followups_used"], state.get("answers", [])) == (0, 0, [])
+
+
+def test_repeat_after_a_nudge_replays_the_question_not_the_nudge():
+    interview = opened()
+    interview.say("", nudge=0)
+    spoken, _ = interview.say("Can you repeat that?")
+    assert spoken == OPENING
+
+
+def test_the_turn_after_a_nudge_is_an_ordinary_turn():
+    interview = opened(reply("probe", "Why a lock?"))
+    interview.say("", nudge=1)
+    spoken, state = interview.say("It schedules checks.")
+    assert (spoken, state["intent"], state["nudge_index"]) == ("Why a lock?", "answer", None)
+
+
+@pytest.mark.parametrize("persona, nudge", [("strict", 0), ("neutral", 5)])
+def test_a_persona_without_that_nudge_says_nothing(persona, nudge):
+    interview = Interview(reply("next", OPENING))
+    interview.say("", persona=persona)
+    spoken, state = interview.say("", nudge=nudge)
+    assert spoken == "" and state["messages"][-1].content == OPENING
+
+
+def test_a_nudge_after_the_end_says_nothing_not_the_closing():
+    interview = opened()
+    interview.say("Let's end the interview.")
+    spoken, _ = interview.say("", nudge=0)
+    assert spoken == ""

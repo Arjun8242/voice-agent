@@ -16,13 +16,15 @@ except (ImportError, ModuleNotFoundError):
     from observability.redact import tracing_callbacks
 
 async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "", visitor_timezone: str = "",
-                      ui_action: dict | None = None, persona: str = "") -> AsyncIterator[tuple[str, object]]:
+                      ui_action: dict | None = None, persona: str = "", nudge: int | None = None
+                      ) -> AsyncIterator[tuple[str, object]]:
     """Yield ("custom", event) as the graph emits them and ("values", state) after each step.
 
     interrupted_reply: what the visitor heard of the previous answer before cutting in.
     visitor_timezone: IANA name from the browser; saved in the checkpoint like the rest of the state.
     ui_action: a click on a booking card ({action, payload}); text is then "".
     persona: interview graph only, the interviewer persona; saved in its state on the first turn.
+    nudge: interview graph only, the index of the nudge to say after the candidate stayed silent.
     """
 
     config = {"configurable": {"thread_id": session_id}}
@@ -36,6 +38,8 @@ async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str 
         inputs["interrupted_reply"] = interrupted_reply
     if persona:
         inputs["persona"] = persona
+    if nudge is not None:
+        inputs["nudge"] = nudge
 
     async for mode, chunk in graph.astream(inputs, config, stream_mode =["custom", "values"]):
         yield mode, chunk

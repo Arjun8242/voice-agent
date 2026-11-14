@@ -2,6 +2,7 @@
 
 ingest       record the turn, classify its intent, reset per-turn fields (no LLM)
 repeat       "can you repeat that": replay the last question word for word (no LLM)
+nudge        the candidate stayed silent: say the persona's fixed nudge line (no LLM)
 interviewer  one streamed model call; the control tag is stripped before anything is spoken
 response     save what the interviewer said to the history
 steer, advance and close (no LLM) are in flow.py.
@@ -30,8 +31,9 @@ ERROR_LINE = "Sorry, I lost my train of thought. Could you say that again?"
 
 
 async def ingest_node(state: dict) -> dict:
-    """An empty query is the request for the opening question: it adds no candidate message."""
+    """An empty query is the request for the opening question, or a nudge: neither adds a candidate message."""
     query = (state.get("query") or "").strip()
+    nudge = state.get("nudge")
     messages = heard_history(state.get("messages") or [], state.get("interrupted_reply") or "")
     if query:
         messages.append(HumanMessage(query))
@@ -39,7 +41,9 @@ async def ingest_node(state: dict) -> dict:
         "query": query,
         "messages": messages,
         "interrupted_reply": "",  # one-shot input: must not be added again next turn
-        "intent": classify_intent(query) if query else "start",
+        "nudge": None,  # one-shot input too: later turns do not send the key, so it would linger
+        "nudge_index": nudge,
+        "intent": "nudge" if nudge is not None else classify_intent(query) if query else "start",
         "mode": "",
         "route": "",
         "pending_answer": None,
@@ -48,6 +52,17 @@ async def ingest_node(state: dict) -> dict:
         "tag_ok": False,
         "errors": [],
     }
+
+
+async def nudge_node(state: dict) -> dict:
+    """The persona's nudge line. Nothing after the interview ended or for a persona without nudges.
+    last_question is kept, so "repeat that" after a nudge replays the real question."""
+    lines = get_persona(state.get("persona")).nudges
+    index = state.get("nudge_index") or 0
+    if state.get("finished") or index >= len(lines):
+        return {}
+    get_stream_writer()({"type": "token", "text": lines[index]})
+    return {"final_text": lines[index]}
 
 
 async def repeat_node(state: dict) -> dict:

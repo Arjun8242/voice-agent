@@ -34,7 +34,7 @@ def send(sent):
 
 @pytest.fixture(autouse=True)
 def fake_tts(monkeypatch):
-    async def stream_tts(text, interrupt_event, on_chunk, client):
+    async def stream_tts(text, interrupt_event, on_chunk, client, speaker=""):
         await on_chunk(b"mp3:" + text.encode())
     monkeypatch.setattr(vt, "stream_tts", stream_tts)
 
