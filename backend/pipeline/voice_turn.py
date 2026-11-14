@@ -7,6 +7,7 @@ graph's stream events into WebSocket messages and speech:
     token      -> assistant_text message, and the sentence splitter feeds TTS
     card       -> ui_card message (the tools node emits it as soon as the tools finish)
     retrieval  -> metric message (rag_complete)
+    usage      -> added to the turn's token totals in the turn log (observability/usage.py)
     booking_execute -> on_booking_execute(event): the calendar call after a confirm, run outside the turn
 
 The graph runs inside this coroutine with the async API and nothing is detached, so
@@ -32,6 +33,8 @@ except (ImportError, ModuleNotFoundError):
     from backend.observability.timings import append_turn_log
     from backend.pipeline.sentence import extract_next_sentence
     from backend.providers.tts import stream_tts
+
+from backend.observability.usage import add_usage, empty_totals
 
 Send = Callable[..., Awaitable[None]]
 
@@ -107,13 +110,14 @@ async def voice_turn(
     cancelled = False
     marks: dict = {"rag_ms": None, "first_token_ms": None, "first_sentence_ms": None}
     tools_used: list[str] = []
+    tokens = empty_totals()
 
     def log_turn(interrupted: bool) -> None:
         """One line in the turn log. A cut-off turn keeps the times it reached; its total_ms is empty
         because it is not a real total, and cut_off_ms says when the visitor cut in."""
         if timings is None:
             return
-        record = {**timings, **marks, "session_id": session_id, "first_audio_ms": first_audio["sent_ms"],
+        record = {**timings, **marks, **tokens, "session_id": session_id, "first_audio_ms": first_audio["sent_ms"],
                   "total_ms": None if interrupted else elapsed(), "interrupted": interrupted,
                   "cut_off_ms": elapsed() if interrupted else None, "tools": tools_used, "created_at": time.time()}
         parts = (record.get("stt_ms"), record.get("hold_ms", 0), record.get("wait_ms"), record["first_audio_ms"])
@@ -166,6 +170,9 @@ async def voice_turn(
 
                 elif kind == "booking_execute" and on_booking_execute is not None:
                     on_booking_execute(event)  # the connection runs it as its own task: it must outlive this turn
+
+                elif kind == "usage":
+                    add_usage(tokens, event)
 
                 elif kind == "retrieval":
                     marks["rag_ms"] = event["ms"]

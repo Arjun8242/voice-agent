@@ -85,7 +85,7 @@ The voice path calls the graph in the same process, so there is no internal stre
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /internal/turn` | Body: session\_id, turn\_id, input (speech text or ui\_action), visitor\_tz. Returns one JSON object: reply, tool calls, cards, stage timings. Runs the same graph as the voice path without STT or TTS; the eval runner uses it. API key only |
+| `POST /internal/turn` | Body: session\_id, turn\_id, input (speech text or ui\_action), visitor\_tz. Returns one JSON object: reply, tool calls, cards, stage timings. Runs the same graph as the voice path without STT or TTS; the eval runner uses it. With mode `interview`, runs the interview graph (`graph/interview/`) instead: body takes `answer` (none for the opening question) and `persona`, and the reply adds the interview flow state. API key only |
 | `POST /internal/kb/reindex` | Rebuilds the index (also available as a CLI command) |
 | `GET /health` | Liveness |
 

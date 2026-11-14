@@ -15,6 +15,8 @@ Each line holds the stages of one turn, in milliseconds:
     barge_in_ms        the visitor's speech start -> the interrupt, server side (barge-in turns only)
     turn_decision      why the turn was taken: base_hold, long_hold, think, done_phrase or reopened
     segments_merged    how many final transcripts were merged into the turn
+    llm_calls, input_tokens, output_tokens, cached_tokens, reasoning_tokens
+                       tokens Groq reported, summed over the turn's LLM calls (observability/usage.py)
 A line with "type": "stt_session" is not a turn: it holds stt_audio_s, the audio seconds Sarvam
 billed for one STT socket (sent when Sarvam ends the session). The report skips these lines.
 Interrupted turns stay in the log: dropping them would hide the slow turns visitors gave up on.
@@ -33,6 +35,7 @@ from pathlib import Path
 LOG_PATH = Path(__file__).resolve().parents[2] / "data" / "turn_log.jsonl"
 FIELDS = ["stt_ms", "hold_ms", "wait_ms", "rag_ms", "first_token_ms", "first_sentence_ms",
           "first_audio_ms", "speech_end_to_first_audio_ms", "total_ms"]
+TOKEN_FIELDS = ["input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens"]
 MIN_TURNS = 100  # design doc: p95 needs at least 100 turns to mean anything
 
 
@@ -53,7 +56,7 @@ def turn_records(records: list[dict]) -> list[dict]:
 def report(records: list[dict]) -> str:
     lines = [f"{len(records)} turns" + (f" (fewer than {MIN_TURNS}: p95 is not reliable yet)" if len(records) < MIN_TURNS else "")]
     lines.append(f"{'stage':<30} {'n':>5} {'p50':>8} {'p95':>8}")
-    for field in FIELDS:
+    for field in FIELDS + TOKEN_FIELDS:  # ms per stage, then tokens per turn
         values = sorted(r[field] for r in records if r.get(field) is not None)
         if not values:
             lines.append(f"{field:<30} {0:>5} {'-':>8} {'-':>8}")

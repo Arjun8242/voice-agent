@@ -143,7 +143,7 @@ Groq's free tier allows about 200,000 tokens a day, which is roughly 80 model ca
 
 ## Observability
 
-Every spoken turn appends one JSON line (STT, the end-of-turn hold and why the turn was taken, retrieval, first token, first audio, total, barge-in latency, tools used) to `data/turn_log.jsonl`. When Sarvam ends an STT session, one more line records the audio seconds it billed. The visitor's words are not stored. A p50/p95 report:
+Every spoken turn appends one JSON line (STT, the end-of-turn hold and why the turn was taken, retrieval, first token, first audio, total, barge-in latency, tools used, and the LLM tokens Groq reported: input, output, cached and reasoning) to `data/turn_log.jsonl`. `/internal/turn` returns the same token counts as `usage`. When Sarvam ends an STT session, one more line records the audio seconds it billed. The visitor's words are not stored. A p50/p95 report:
 
 ```bash
 python -m backend.observability.timings
@@ -152,6 +152,13 @@ python -m backend.observability.timings
 Optional LangSmith tracing is switched on with the `LANGSMITH_*` settings. Names, emails and meeting titles are masked before anything is sent.
 
 `POST /internal/turn` runs the same agent from text alone, for testing without speech. It is disabled unless `INTERNAL_API_KEY` is set.
+
+With `"mode": "interview"` it runs the mock interviewer instead, so it can be tried with no Sarvam spend (each turn still calls Groq). Leave out `answer` to get the opening question; `persona` (`neutral` or `strict`) is read on the first turn. The reply includes the flow state: topic, level, follow-ups used, the control-tag decision and the recorded answers.
+
+```bash
+curl -s localhost:3001/internal/turn -H "api-key: $INTERNAL_API_KEY" -H "content-type: application/json"   -d '{"session_id": "iv1", "mode": "interview", "persona": "strict"}'
+curl -s localhost:3001/internal/turn -H "api-key: $INTERNAL_API_KEY" -H "content-type: application/json"   -d '{"session_id": "iv1", "mode": "interview", "answer": "It schedules checks with a Postgres lock."}'
+```
 
 ## Measured so far
 

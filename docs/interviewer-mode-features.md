@@ -5,7 +5,7 @@ One small subtask at a time: implement, test, then review by Arjun before the ne
 
 Defaults taken from the plan's checklist (§11), to confirm during review: separate interview graph,
 `TurnTaker` in `pipeline/` for both modes, R1 fix also ships to recruiter mode, 10-minute cap,
-at most 2 interviewer sentences, deterministic ladder, one persona (neutral), end-of-session report
+at most 2 interviewer sentences, deterministic ladder, two personas (neutral and strict; strict has a male voice), end-of-session report
 only, transcripts in memory only, a few Hinglish fillers ("matlab", "toh", "haan") in the cue lists.
 
 Status: `review` = implemented and tested, waiting for review. `todo` = not started.
@@ -29,20 +29,21 @@ Status: `review` = implemented and tested, waiting for review. `todo` = not star
 
 | # | Subtask | Plan ref | Files | Status |
 |---|---|---|---|---|
-| B1 | Extract the heard-history helper from `ingest.py` (no behaviour change) | P2.1 | `graph/nodes/ingest.py` | todo |
-| B2 | Topic plan from the KB projects | P2.2 | `interview/plan.py` | todo |
-| B3 | Clarification intents (repeat, hint, rephrase, skip, done) | P2.3 | `interview/intents.py` | todo |
-| B4 | Persona table (neutral only) and fixed templates | §6.5 | `interview/personas.py` | todo |
-| B5 | Control-tag parser and stream buffer | §6.3 | `graph/interview/tag.py` | todo |
-| B6 | Interview graph: state, ingest, interviewer node, `prompts/interviewer.md` | P2.4 | `graph/interview/*` | todo |
-| B7 | `advance` node: follow-up cap, ladder, time cap, closing | P3.1, P4.3 | `graph/interview/*` | todo |
-| B8 | `/internal/turn` interview mode for text-only testing | P2.5 | `graph/api.py` | todo |
+| B1 | Extract the heard-history helper from `ingest.py` (no behaviour change) | P2.1 | `graph/nodes/ingest.py`, `tests/test_heard_history.py` | review |
+| B2 | Topic plan from the KB projects | P2.2 | `interview/plan.py`, `tests/test_interview_plan.py` | review |
+| B3 | Clarification intents (repeat, hint, rephrase, skip, end) | P2.3 | `interview/intents.py`, `tests/test_interview_intents.py` | review |
+| B4 | Persona table (neutral and strict, strict with a male voice) and fixed templates | §6.5 | `interview/personas.py`, `tests/test_interview_personas.py` | review |
+| B5 | Control-tag parser and stream buffer | §6.3 | `graph/interview/tag.py`, `tests/test_interview_tag.py` | review |
+| B6 | Interview graph: state, ingest, interviewer node, `prompts/interviewer.md` (opening, answers, hint, rephrase, repeat without LLM) | P2.4 | `graph/interview/*`, `prompts/interviewer.md`, `tests/test_interview_graph.py` | review |
+| B7 | `steer` and `advance` nodes: follow-up cap, ladder, topic moves, skip, end, strict hint refusal, 10-minute cap, closing | P3.1, P4.3 | `graph/interview/flow.py`, `config.py`, `tests/test_interview_flow.py` | review |
+| B8 | `/internal/turn` interview mode for text-only testing; interview graph built at startup | P2.5 | `graph/api.py`, `graph/runner.py`, `server/main.py`, `tests/test_internal_turn.py`, README | review |
+| B9 | Log the LLM tokens Groq reports per call (input, output, cached, reasoning) in the turn log and `/internal/turn` | §7.3, §8 | `observability/usage.py`, `rag/llm.py`, both model nodes, `voice_turn.py`, `runner.py`, `timings.py`, `tests/test_llm_usage.py` | review |
 
 ## Phase C: interview in voice and the report
 
 | # | Subtask | Plan ref | Files | Status |
 |---|---|---|---|---|
-| C1 | `session_start.mode`, graph per connection, interview `TurnPolicy` | P2.6 | `server/connection.py`, `server/main.py` | todo |
+| C1 | `session_start.mode` and `persona`, graph per connection, interview `TurnPolicy`, persona voice passed to TTS | P2.6 | `server/connection.py`, `server/main.py` | todo |
 | C2 | UI: mode picker and End button | P2.6 | `+page.svelte` | todo |
 | C3 | Silence nudges wired to TTS | P5.1 | `server/connection.py` | todo |
 | C4 | End-of-session evaluator | P4.1 | `interview/evaluate.py`, `prompts/evaluator.md` | todo |

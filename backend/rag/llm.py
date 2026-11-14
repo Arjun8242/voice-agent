@@ -8,6 +8,8 @@ from typing import AsyncIterator
 
 from groq import AsyncGroq
 
+from backend.observability.usage import LlmUsage
+
 try:
     from config import GROQ_API_KEY, GROQ_MODEL
 except (ImportError, ModuleNotFoundError):
@@ -47,7 +49,8 @@ async def stream_text(
 ) -> AsyncIterator[str | dict]:
     """Yield Groq output as it arrives. Used by the graph's agent node.
 
-    Text is yielded as str; each tool call, once its arguments are complete, as {"name": ..., "args": {...}}.
+    Text is yielded as str; each tool call, once its arguments are complete, as {"name": ..., "args": {...}};
+    last, an LlmUsage with the tokens Groq reports in its final chunk (none if it reports nothing).
     tools are declarations {name, description, parameters (JSON schema)}.
     tool_calls are the calls already run this turn, each {name, args, result}. They are sent as an assistant
     message plus one tool message per call: results pasted into the prompt as text did not count as done for
@@ -76,7 +79,9 @@ async def stream_text(
 
     # delta is the chunks which are streamed from groq, each chunk can contain text and/or tool call fragments. We need to accumulate the tool call fragments until we have a complete tool call, then yield it as a dict.
     calls: dict[int, dict] = {}  # tool-call index -> {"name": str, "arguments": str}
+    reported = None
     async for chunk in stream:
+        reported = final_usage(chunk) or reported
         if not chunk.choices:
             continue
         delta = chunk.choices[0].delta
@@ -95,3 +100,22 @@ async def stream_text(
         except ValueError:  # shortcut: broken arguments become {}; the registry then reports any missing required one
             args = {}
         yield {"name": call["name"], "args": args if isinstance(args, dict) else {}}
+    if reported is not None:
+        yield to_llm_usage(reported)
+
+
+def final_usage(chunk):
+    """Groq sends the call's token counts once, in x_groq.usage of the final chunk (usage with stream_options)."""
+    x_groq = getattr(chunk, "x_groq", None)
+    return getattr(x_groq, "usage", None) or getattr(chunk, "usage", None)
+
+
+def to_llm_usage(usage) -> LlmUsage:
+    prompt_details = getattr(usage, "prompt_tokens_details", None)
+    completion_details = getattr(usage, "completion_tokens_details", None)
+    return LlmUsage(
+        input_tokens=usage.prompt_tokens,
+        output_tokens=usage.completion_tokens,
+        cached_tokens=getattr(prompt_details, "cached_tokens", 0) or 0,
+        reasoning_tokens=getattr(completion_details, "reasoning_tokens", 0) or 0,
+    )

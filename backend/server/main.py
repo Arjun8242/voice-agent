@@ -34,6 +34,9 @@ except (ImportError, ModuleNotFoundError):
     from backend.tools.kb_data import load_kb_data, load_scheduling
     from backend.tools.registry import build_registry
 
+from backend.graph.interview.graph import build_interview_graph
+from backend.interview.plan import build_plan
+
 KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
 BOOKINGS_DB = Path(__file__).resolve().parents[2] / "data" / "bookings.db"
 
@@ -45,12 +48,14 @@ async def lifespan(app: FastAPI):
     # nothing touches a calendar or the bookings table until booking is enabled
     calendar = create_calendar() if scheduling.enabled else None
     store = BookingStore(BOOKINGS_DB) if scheduling.enabled else None
-    registry = build_registry(load_kb_data(KB_DIR), calendar=calendar, scheduling=scheduling, store=store)
+    kb = load_kb_data(KB_DIR)
+    registry = build_registry(kb, calendar=calendar, scheduling=scheduling, store=store)
     gate = create_booking_gate_node(store, calendar, scheduling) if scheduling.enabled else None
     app.state.executor = BookingExecutor(store, calendar, scheduling) if scheduling.enabled else None
     app.state.graph = build_graph(
         retrieve_fn=retrieve, generate_fn=stream_text, aliases=project_aliases(), registry=registry, gate=gate,
     )
+    app.state.interview_graph = build_interview_graph(stream_text, build_plan(kb))
     app.state.tts_client = create_tts_client()
     await asyncio.gather(
         warm_llm(),

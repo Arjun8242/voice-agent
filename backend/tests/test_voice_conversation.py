@@ -658,3 +658,17 @@ def test_a_card_click_during_the_hold_wins_over_the_held_words():
         assert h.of_type("interrupted") == []  # the held words did not cut the click's turn off
         assert h.of_type("transcript_final") == [] and model.prompts == []
     run(scenario, model)
+
+
+def test_the_turn_log_has_the_tokens_groq_reported():
+    from backend.observability.usage import LlmUsage
+    model = GatedModel([f"{FIRST} ", LlmUsage(input_tokens=2500, output_tokens=180, cached_tokens=0, reasoning_tokens=60)])
+
+    async def scenario(h):
+        await h.say("q1")
+        await h.answered(1)
+        assert [m["text"] for m in h.of_type("assistant_text")] == [f"{FIRST} "]  # usage is never sent as text
+    run(scenario, model)
+
+    (r,) = TURN_LOG
+    assert (r["llm_calls"], r["input_tokens"], r["output_tokens"], r["reasoning_tokens"]) == (1, 2500, 180, 60)
