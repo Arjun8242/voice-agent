@@ -78,8 +78,7 @@ You need Python 3.12 or newer, Node.js, a [Groq](https://console.groq.com) API k
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
-pip install -e backend
-pip install pytest
+pip install -e "backend[dev]"      # [dev] adds pytest
 cp .env.example .env              # then fill in the keys
 ```
 
@@ -114,6 +113,7 @@ Facts live in `knowledge_base/`. After changing anything there, run the validato
 
 ```bash
 python -m pytest backend/tests -q
+cd web && npm test
 ```
 
 The suite uses a scripted model, a fake calendar and a mocked Google transport, so it needs no network and no keys.
@@ -143,7 +143,7 @@ Groq's free tier allows about 200,000 tokens a day, which is roughly 80 model ca
 
 ## Observability
 
-Every spoken turn appends one JSON line (STT, retrieval, first token, first audio, total, tools used) to `data/turn_log.jsonl`. The visitor's words are not stored. A p50/p95 report:
+Every spoken turn appends one JSON line (STT, the end-of-turn hold and why the turn was taken, retrieval, first token, first audio, total, barge-in latency, tools used) to `data/turn_log.jsonl`. When Sarvam ends an STT session, one more line records the audio seconds it billed. The visitor's words are not stored. A p50/p95 report:
 
 ```bash
 python -m backend.observability.timings

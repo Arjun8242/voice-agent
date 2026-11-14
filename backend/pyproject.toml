@@ -15,6 +15,9 @@ dependencies = [
     "tzdata",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=9"]  # tests only: pip install -e "backend[dev]"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

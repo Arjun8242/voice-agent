@@ -57,7 +57,7 @@ Eval runner --> POST /internal/turn (text mode, no voice)
 ### 3.1 One turn, end to end
 
 1. The browser streams mic audio to the backend over WebSocket.
-2. The voice pipeline runs STT. On the final transcript the turn manager assigns a `turn_id`, cancels any turn still running, and starts the agent graph in the same process.
+2. The voice pipeline runs STT. Final transcripts are held and merged by the end-of-turn controller (`pipeline/turn_taking.py`) until the visitor is done; a short acknowledgement over the answer is dropped. Then the turn manager assigns a `turn_id`, cancels any turn still running, and starts the agent graph in the same process.
 3. The graph runs (section 4).
 4. Tokens stream out of the graph. The turn manager sends complete sentences to TTS and plays audio as it arrives.
 5. Cards travel as separate events and render at once.
@@ -74,6 +74,7 @@ Eval runner --> POST /internal/turn (text mode, no voice)
 | `ui.card` / `ui.card.dismiss` | server to client | turn\_id, card\_id, type, data |
 | `ui.action` | client to server | action (select\_slot, submit\_details, confirm, cancel\_booking, confirm\_cancel, keep\_booking), payload |
 | `booking.update` | server to client | booking\_id, status, card data; no turn\_id |
+| `turn.state` | server to client | state: speaking, holding, thinking or idle (the end-of-turn controller in `pipeline/turn_taking.py`); no turn\_id |
 | `turn.cancelled` / `error` | server to client | turn\_id / code, message, retryable |
 
 Every turn event carries `turn_id`. The client drops events from turns at or before the last `turn.cancelled`, so a card from an interrupted request never appears late. Session-level events (`session.ready`, `booking.update`) carry no `turn_id` and always pass that guard: a booking result must reach the visitor even when the turn that started it was cut off. `booking.update` carries booking\_id and status, and the client renders it by booking\_id, so a repeat changes nothing.

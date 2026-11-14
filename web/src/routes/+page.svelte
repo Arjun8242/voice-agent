@@ -15,6 +15,8 @@
   type Status = 'idle' | 'listening' | 'thinking' | 'speaking';
 
   let status = $state<Status>('idle');
+  // Whether the server is still waiting for the visitor to finish (sent as turn_state, never tied to a turn).
+  let turnState = $state<'speaking' | 'holding' | 'thinking' | 'idle'>('idle');
   let partialText = $state('');
   let finalText = $state('');
   let assistantText = $state('');
@@ -77,8 +79,8 @@
     ws.onmessage = (ev) => {
       // Binary = MP3 audio frame [u32LE sentenceId][mp3 bytes]
       if (ev.data instanceof ArrayBuffer) {
-        appendChunk(ev.data);
-        if (status === 'thinking') status = 'speaking';
+        // a late frame of a cut-off answer is dropped and must not flip the badge to speaking
+        if (appendChunk(ev.data) && status === 'thinking') status = 'speaking';
         return;
       }
 
@@ -94,6 +96,10 @@
 
         case 'transcript_partial':
           partialText = msg.text;
+          break;
+
+        case 'turn_state':
+          turnState = msg.state;
           break;
 
         case 'transcript_final':
@@ -258,6 +264,10 @@
     {/if}
     {statusLabel[status]}
   </span>
+
+  {#if turnState === 'thinking'}
+    <p class="text-sm text-[hsl(215,20%,65%)]" role="status">Take your time… I'm listening.</p>
+  {/if}
 
   <!-- Mic button -->
   <button

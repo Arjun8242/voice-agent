@@ -2,15 +2,21 @@
 
 Each line holds the stages of one turn, in milliseconds:
     stt_ms             end of the visitor's speech -> final transcript
+    hold_ms            final transcript -> turn start: the end-of-turn hold (pipeline/turn_taking.py)
     wait_ms            waiting for a cut-off answer's playback report (0 almost always)
     rag_ms             retrieval
     first_token_ms     turn start -> first answer token (includes any tool round)
     first_sentence_ms  turn start -> first full sentence handed to TTS
     first_audio_ms     turn start -> first audio chunk sent to the browser
-    speech_end_to_first_audio_ms   stt + wait + first_audio: what the visitor waits for
+    speech_end_to_first_audio_ms   stt + hold + wait + first_audio: what the visitor waits for
     total_ms           turn start -> done (empty for an interrupted turn: it is not a real total)
     interrupted        the visitor cut in before the server finished the turn
     cut_off_ms         turn start -> the cut-in (interrupted turns only)
+    barge_in_ms        the visitor's speech start -> the interrupt, server side (barge-in turns only)
+    turn_decision      why the turn was taken: base_hold, long_hold, think, done_phrase or reopened
+    segments_merged    how many final transcripts were merged into the turn
+A line with "type": "stt_session" is not a turn: it holds stt_audio_s, the audio seconds Sarvam
+billed for one STT socket (sent when Sarvam ends the session). The report skips these lines.
 Interrupted turns stay in the log: dropping them would hide the slow turns visitors gave up on.
 Browser-side time (network, audio buffering) is not included.
 
@@ -25,7 +31,7 @@ import statistics
 from pathlib import Path
 
 LOG_PATH = Path(__file__).resolve().parents[2] / "data" / "turn_log.jsonl"
-FIELDS = ["stt_ms", "wait_ms", "rag_ms", "first_token_ms", "first_sentence_ms",
+FIELDS = ["stt_ms", "hold_ms", "wait_ms", "rag_ms", "first_token_ms", "first_sentence_ms",
           "first_audio_ms", "speech_end_to_first_audio_ms", "total_ms"]
 MIN_TURNS = 100  # design doc: p95 needs at least 100 turns to mean anything
 
@@ -37,6 +43,11 @@ def append_turn_log(record: dict, path: Path = LOG_PATH) -> None:
             f.write(json.dumps(record) + "\n")
     except OSError as err:  # a full disk must not break the voice turn
         print(f"[timings] could not write the turn log: {err}")
+
+
+def turn_records(records: list[dict]) -> list[dict]:
+    """Only the per-turn lines; session lines (stt_session) have no stage times."""
+    return [r for r in records if "type" not in r]
 
 
 def report(records: list[dict]) -> str:
@@ -63,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No turn log yet at {args.log}: talk to the agent first.")
         return 1
     records = [json.loads(line) for line in args.log.read_text(encoding="utf-8").splitlines() if line.strip()]
-    print(report(records))
+    print(report(turn_records(records)))
     return 0
 
 

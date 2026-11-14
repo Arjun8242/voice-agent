@@ -10,6 +10,9 @@ from zoneinfo import ZoneInfo
 from fastapi import WebSocket
 import httpx
 
+from backend.observability.timings import append_turn_log
+from backend.pipeline.turn_taking import TurnTaker
+
 try:
     from pipeline.voice_turn import voice_turn
     from pipeline.barge_in import BargeIn
@@ -71,6 +74,10 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     session_id = uuid.uuid4().hex
     visitor_timezone = DEFAULT_TIMEZONE
     turn_id = 0  # counts turns on this connection; every message of a turn carries it
+    held_stt_ms: float | None = None  # speech end -> final transcript, for the turn being held
+    last_final_at: float | None = None  # when that final arrived; the hold is measured from it
+    speech_started_at: float | None = None  # when STT last heard the visitor start, for barge_in_ms
+    turn_timings: dict | None = None  # the running spoken turn's log line (None for a click)
 
     # A new event is created for each turn so a stale event from a cancelled turn
     # cannot abort a newer one.
@@ -85,10 +92,16 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         interrupt_turn(conv)
         asyncio.get_running_loop().create_task(send("interrupted", {"turnId": turn_id}))
 
+    def on_barge_in() -> None:
+        if turn_timings is not None and speech_started_at is not None:
+            # speech start -> interrupt, server side. Lost if the turn already wrote its log line (audio still playing).
+            turn_timings["barge_in_ms"] = round((time.perf_counter() - speech_started_at) * 1000, 1)
+        do_interrupt()
+
     barge_in = BargeIn(
         is_answering=lambda: is_answering(conv),
         is_speaking=lambda: conv.agent_speaking,
-        interrupt=do_interrupt,
+        interrupt=on_barge_in,
     )
 
     # -------------------------------------------------------------------------
@@ -115,15 +128,15 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     # Turn launcher — creates a fresh interrupt_event for each turn.
     # -------------------------------------------------------------------------
     def launch_turn(text: str, ui_action: dict | None = None) -> None:
-        nonlocal interrupt_event, turn_id
+        nonlocal interrupt_event, turn_id, turn_timings
         interrupt_event = asyncio.Event()   # fresh per turn
         turn_id += 1
         timings = None  # a click has no speech to time, and must not skew the latency report
         if ui_action is None:
-            # end of speech -> final transcript; None if STT sent the final before its speech-end event
-            ended = conv.speech_ended_at
-            conv.speech_ended_at = None
-            timings = {"turn_id": turn_id, "stt_ms": round((time.perf_counter() - ended) * 1000, 1) if ended else None}
+            hold_ms = round((time.perf_counter() - last_final_at) * 1000, 1) if last_final_at else None
+            timings = {"turn_id": turn_id, "stt_ms": held_stt_ms, "hold_ms": hold_ms,
+                       "turn_decision": turn_taker.last_decision, "segments_merged": turn_taker.last_segments}
+        turn_timings = timings
 
         task = asyncio.create_task(_run_turn(text, conv, with_turn_id(send, turn_id), interrupt_event, timings, ui_action))
         start_turn(conv, task)
@@ -147,6 +160,30 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             print(f"[voiceTurn] {err}")
         finally:
             finish_turn(conv, asyncio.current_task())
+
+    # -------------------------------------------------------------------------
+    # Turn-taking: finals are held and merged until the speaker is done (pipeline/turn_taking.py)
+    # -------------------------------------------------------------------------
+    def commit_turn(text: str) -> None:
+        loop = asyncio.get_running_loop()
+        loop.create_task(send("transcript_final", {"text": text}))
+        if is_answering(conv):
+            do_interrupt()  # words too short for barge-in still replace the answer, keeping only what was heard
+        launch_turn(text)
+
+    def reopen_turn() -> bool:
+        """Speech resumed right after a commit: cancel that turn if none of its audio has played."""
+        if not is_answering(conv) or conv.agent_speaking:
+            return False
+        do_interrupt()
+        return True
+
+    def send_turn_state(state: str) -> None:
+        """speaking / holding / thinking / idle. No turnId: it is about the visitor, not an agent turn."""
+        asyncio.get_running_loop().create_task(send("turn_state", {"state": state}))
+
+    turn_taker = TurnTaker(commit=commit_turn, is_answering=lambda: is_answering(conv), reopen_turn=reopen_turn,
+                           on_state=send_turn_state)
 
     # -------------------------------------------------------------------------
     # Messages from the browser (text frames)
@@ -176,6 +213,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         elif isinstance(data, dict) and data.get("type") == "ui_action":
             action, payload = data.get("action"), data.get("payload") or {}
             if isinstance(action, str) and isinstance(payload, dict):
+                turn_taker.drop_pending()  # words still being held must not start a turn after the click
                 if is_answering(conv):
                     do_interrupt()  # a click while the agent talks replaces the answer, as speech would
                 launch_turn("", {"action": action, "payload": payload})
@@ -185,22 +223,36 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     # -------------------------------------------------------------------------
     class _Handlers:
         def on_speech_start(self) -> None:
+            nonlocal speech_started_at
+            speech_started_at = time.perf_counter()
             conv.speech_ended_at = None  # a new utterance: the old end time no longer applies
+            turn_taker.on_speech_start()  # first: a re-open cancels the turn, so barge-in has nothing to do
             barge_in.on_speech_start()
 
         def on_speech_end(self) -> None:
             conv.speech_ended_at = time.perf_counter()
             barge_in.on_speech_end()
+            turn_taker.on_speech_end()
 
         async def on_partial(self, text: str) -> None:
+            turn_taker.on_partial(text)
             await send("transcript_partial", {"text": text})
 
         async def on_final(self, text: str) -> None:
-            await send("transcript_final", {"text": text})
-            launch_turn(text)
+            nonlocal held_stt_ms, last_final_at
+            last_final_at = time.perf_counter()
+            ended = conv.speech_ended_at  # None if STT sent the final before its speech-end event
+            conv.speech_ended_at = None
+            held_stt_ms = round((time.perf_counter() - ended) * 1000, 1) if ended else None
+            turn_taker.on_final(text)  # commit_turn runs once the speaker is done; an "okay" over the answer is dropped
 
         async def on_error(self, message: str) -> None:
             await send("error", {"message": f"STT error: {message}"})
+
+        def on_session_end(self, audio_seconds: float | None) -> None:
+            # its own line, not a turn: the billed seconds belong to the whole STT socket
+            append_turn_log({"type": "stt_session", "session_id": session_id, "stt_audio_s": audio_seconds,
+                             "created_at": time.time()})
 
     stt = create_stt(_Handlers())
 
@@ -222,6 +274,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
 
     finally:
         barge_in.dispose()
+        turn_taker.dispose()
         stt.close()
         interrupt_turn(conv)
         print("[server] Client disconnected")

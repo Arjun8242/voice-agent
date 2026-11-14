@@ -30,6 +30,10 @@ SARVAM_STT_URL = (
     "&stream_type=fast"
 )
 STT_QUEUE_MAX = 50
+# How long Sarvam waits in silence before it ends a speech segment. Recruiter mode keeps the provider
+# default (500 ms) by not sending the parameter; an interview candidate pauses to think, so fewer, longer
+# segments. A starting guess from the plan (900-1200), not yet measured with stream_type=fast.
+STT_INTERVIEW_SILENCE_MS = 1000
 
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech/stream"
 TTS_LANGUAGE = "en-IN"

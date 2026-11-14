@@ -116,7 +116,7 @@ async def voice_turn(
         record = {**timings, **marks, "session_id": session_id, "first_audio_ms": first_audio["sent_ms"],
                   "total_ms": None if interrupted else elapsed(), "interrupted": interrupted,
                   "cut_off_ms": elapsed() if interrupted else None, "tools": tools_used, "created_at": time.time()}
-        parts = (record.get("stt_ms"), record.get("wait_ms"), record["first_audio_ms"])
+        parts = (record.get("stt_ms"), record.get("hold_ms", 0), record.get("wait_ms"), record["first_audio_ms"])
         record["speech_end_to_first_audio_ms"] = round(sum(parts), 1) if None not in parts else None
         append_turn_log(record)
 
