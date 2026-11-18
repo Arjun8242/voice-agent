@@ -117,9 +117,11 @@ class Harness:
         await self.handlers.on_final(text)
 
     async def cut_in(self):
-        """The visitor starts speaking over the answer; returns the turn id the server reports as interrupted."""
+        """The visitor starts speaking over the answer; returns the turn id the server reports as interrupted.
+        The partial matters while audio plays: there, only words cut the answer off."""
         before = len(self.of_type("interrupted"))
         self.handlers.on_speech_start()
+        await self.handlers.on_partial("wait, actually")
         await self.until(lambda: len(self.of_type("interrupted")) > before, "the interrupted message")
         return self.of_type("interrupted")[-1]["turnId"]
 
@@ -344,7 +346,7 @@ def test_10_after_playback_ended_speech_is_a_new_question_not_a_barge_in():
         h.ended(1)
         await asyncio.sleep(0.05)
         h.handlers.on_speech_start()
-        await asyncio.sleep(0.5)  # longer than the 300 ms barge-in confirm
+        await asyncio.sleep(0.5)
         assert h.of_type("interrupted") == []
         await h.say("q2")
         await h.answered(2)
@@ -397,9 +399,11 @@ def test_16_short_okay_while_the_answer_plays_is_not_a_new_turn():
         await h.say("q1")
         await h.answered(1)  # the server is done; the browser is still playing the answer
         h.handlers.on_speech_start()
-        h.handlers.on_speech_end()  # shorter than the 300 ms barge-in confirm
+        await h.handlers.on_partial("Okay")
+        await asyncio.sleep(0.5)  # a spoken "okay" plus Sarvam's end-of-speech silence lasts this long (live test 2.2)
+        h.handlers.on_speech_end()
         await h.say("okay")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
         assert h.of_type("interrupted") == []
         assert [m["text"] for m in h.of_type("transcript_final")] == ["q1"]  # the browser never resets playback
         assert len(model.prompts) == 1  # no turn was started for "okay"
@@ -484,7 +488,7 @@ def test_14_a_cut_off_turn_is_logged_as_interrupted_with_the_times_it_reached():
     assert cut["total_ms"] is None and cut["cut_off_ms"] >= cut["first_audio_ms"]  # cut short: no fake total
     assert done["total_ms"] is not None and done["cut_off_ms"] is None
     assert cut["stt_ms"] is None and cut["speech_end_to_first_audio_ms"] is None  # no speech-end event was sent
-    assert cut["barge_in_ms"] >= 250 and "barge_in_ms" not in done  # audio was playing: the 300 ms confirm ran first
+    assert cut["barge_in_ms"] is not None and "barge_in_ms" not in done  # audio was playing: the words cut it off
 
 
 def test_15_a_cut_in_before_any_audio_is_logged_as_given_up_waiting():

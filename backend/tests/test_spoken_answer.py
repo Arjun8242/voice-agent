@@ -109,43 +109,44 @@ def test_streamed_tokens_give_the_same_sentences_as_the_whole_text():
     assert spoken == ["Arjun built Beacon with Next.js and Express.", "It is shipped.", "Anything else?", "Ask away."]
 
 
-# --- telling real speech from a cough ------------------------------------------------------
+# --- telling an interruption from an "okay" or a cough ---------------------------------------
 
-def barge_in(answering, speaking):
+def barge_in(answering=True, speaking=True):
     cuts = []
-    detector = BargeIn(is_answering=lambda: answering["now"], is_speaking=lambda: speaking,
-                       interrupt=lambda: cuts.append(1), confirm_ms=50)
+    detector = BargeIn(is_answering=lambda: answering, is_speaking=lambda: speaking, interrupt=lambda: cuts.append(1))
     return detector, cuts
 
 
-def test_speech_over_the_answer_cuts_it_off_only_after_it_lasts():
-    async def scenario():
-        answering = {"now": True}
-        detector, cuts = barge_in(answering, speaking=True)
-        detector.on_speech_start()
-        await asyncio.sleep(0.01)
-        assert cuts == []  # too short to be sure yet
-        await asyncio.sleep(0.1)
-        assert cuts == [1]
-        detector.dispose()
-    asyncio.run(scenario())
+def test_words_over_the_playing_answer_cut_it_off():
+    detector, cuts = barge_in()
+    detector.on_speech_start()
+    assert cuts == []  # sound alone could still be an "okay"
+    detector.on_partial("and what about")
+    assert cuts == [1]
 
 
-def test_a_short_noise_or_an_answer_that_already_finished_is_not_cut_off():
-    async def scenario():
-        answering = {"now": True}
-        cough, cuts = barge_in(answering, speaking=True)
-        cough.on_speech_start()
-        await asyncio.sleep(0.01)
-        cough.on_speech_end()  # stopped before the confirm time
-        await asyncio.sleep(0.1)
-        assert cuts == []
-        cough.dispose()
+@pytest.mark.parametrize("partial", ["okay", "Okay.", "mm hmm", "Yeah", "acha", "", "  "])
+def test_an_acknowledgement_or_no_words_over_the_playing_answer_never_cuts_it_off(partial):
+    detector, cuts = barge_in()
+    detector.on_speech_start()
+    detector.on_partial(partial)
+    assert cuts == []
 
-        late, late_cuts = barge_in(answering, speaking=True)
-        late.on_speech_start()
-        answering["now"] = False  # the answer finished on its own while we waited
-        await asyncio.sleep(0.1)
-        assert late_cuts == []
-        late.dispose()
-    asyncio.run(scenario())
+
+def test_speech_before_any_audio_plays_cuts_the_turn_at_once():
+    detector, cuts = barge_in(speaking=False)
+    detector.on_speech_start()
+    assert cuts == [1]
+
+
+def test_speech_after_the_answer_finished_cuts_nothing():
+    detector, cuts = barge_in(answering=False, speaking=False)
+    detector.on_speech_start()
+    detector.on_partial("next question please")
+    assert cuts == []
+
+
+def test_a_late_partial_before_any_audio_does_not_cancel_the_turn_it_belongs_to():
+    detector, cuts = barge_in(speaking=False)  # the turn these words started is running; no audio yet
+    detector.on_partial("tell me about beacon")
+    assert cuts == []  # before audio, only a new speech start interrupts

@@ -328,11 +328,11 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
 
         def on_speech_end(self) -> None:
             conv.speech_ended_at = time.perf_counter()
-            barge_in.on_speech_end()
             turn_taker.on_speech_end()
 
         async def on_partial(self, text: str) -> None:
             turn_taker.on_partial(text)
+            barge_in.on_partial(text)  # while audio plays, words (not "okay") are what cut the answer off
             await send("transcript_partial", {"text": text})
 
         async def on_final(self, text: str) -> None:
@@ -370,7 +370,6 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         pass  # client disconnected or WS error
 
     finally:
-        barge_in.dispose()
         turn_taker.dispose()
         if report_task is not None:
             report_task.cancel()  # nobody is left to read it: stop spending tokens on it
