@@ -180,7 +180,7 @@ def test_challenge_is_offered_only_from_the_personas_level():
 def test_the_turn_message_lists_only_the_allowed_decisions_and_the_level():
     state = {"intent": "answer", "query": "Postgres.", "messages": [HumanMessage("Postgres.")]}
     message = build_turn_message(state, TOPICS[0], NEUTRAL)
-    assert "Decisions allowed this turn: probe, example, next, clarify_back." in message
+    assert "Decisions allowed this turn: probe, example, next, clarify_back, hint_request." in message
     assert "Difficulty: level 1, explain" in message
     assert "Conversation so far" not in message  # the only message is the current one
 

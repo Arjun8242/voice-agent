@@ -8,6 +8,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from backend.graph.interview.tag import HINT_REQUEST
 from backend.interview.personas import Persona
 from backend.interview.plan import Topic
 
@@ -82,7 +83,7 @@ def build_turn_message(state: dict, topic: Topic, persona: Persona, next_title: 
         persona.prompt_fragment,
         f"Topic: {topic['title']}\nReference notes (the only facts you may rely on):\n{topic['text']}",
         f"Difficulty: level {level}, {LEVEL_NAMES.get(level, LEVEL_NAMES[1])}.",
-        "Decisions allowed this turn: " + ", ".join(decisions) + ".",
+        "Decisions allowed this turn: " + ", ".join(decisions + ([HINT_REQUEST] if mode == "answer" else [])) + ".",
     ]
     if earlier:
         parts.append("Conversation so far:\n" + history_lines(earlier))

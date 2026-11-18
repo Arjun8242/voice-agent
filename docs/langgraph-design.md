@@ -447,7 +447,7 @@ A second graph, `graph/interview/`, runs a spoken mock interview about the same 
 | --- | --- | --- |
 | `ingest` | no | Records the turn, applies heard-history, classifies the intent by fixed phrases (`interview/intents.py`) |
 | `steer` | no | Decides the turn: end, repeat, nudge, move to the next topic, or ask the model. Enforces the follow-up cap before the call |
-| `interviewer` | yes | One streamed call. The reply starts with a control tag (`[[decision=probe]]`) that `tag.py` strips before anything is spoken |
+| `interviewer` | yes | One streamed call. The reply starts with a control tag (`[[decision=probe]]`) that `tag.py` strips before anything is spoken. If the tag says `hint_request` (the candidate asked for help in words the fixed phrases missed), the reply is dropped unspoken and the turn goes back to `steer` as a hint, so the persona's hint rule is applied by code |
 | `advance` | no | Counts the follow-up and climbs the ladder, or moves topic; records the answer only now, so a cut-off turn is never graded |
 | `repeat`, `nudge`, `close` | no | The last question again, a persona's fixed nudge line, the closing line |
 

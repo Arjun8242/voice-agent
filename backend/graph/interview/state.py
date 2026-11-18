@@ -44,10 +44,10 @@ class InterviewState(TypedDict, total=False):
     finished: bool  # the closing line was spoken; every later turn gets it again
     answers: list[Answer]  # every answer so far, recorded only when its turn completes
     last_question: str  # the interviewer's last spoken turn, replayed on "repeat that" without the LLM
-    intent: str  # this turn: answer, repeat, hint, rephrase, skip, end, "start" for the opening, or "nudge"
+    intent: str  # this turn: answer, repeat, hint, rephrase, skip, end, "start" for the opening, or "nudge"; an answer becomes hint when the model labels it hint_request
     nudge_index: int | None  # this turn's nudge, copied from the input so the input can be cleared
     mode: str  # what the interviewer does: start, answer, hint, rephrase, new_topic or skip (prompt.py)
-    route: str  # the steer node's choice: interviewer, repeat, close or nudge
+    route: str  # the steer node's choice: interviewer, repeat, close or nudge; "steer" when the interviewer hands a hint request back
     pending_answer: Answer | None  # this turn's answer, moved into answers once the turn completes
     final_text: str  # what the interviewer said this turn (tag removed)
     decision: str  # the model's control-tag decision this turn; "next" when the tag was missing

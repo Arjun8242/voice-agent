@@ -12,6 +12,9 @@ Rules a reader would not guess:
 - The ladder climbs one level per follow-up (1 explain, 2 justify, 3 stress) and restarts at 1 on a
   new topic. Struggle signals (skip, "I don't know", a declined hint) move on instead of climbing.
 - The time cap is checked when a candidate answers, so a question is never cut short.
+- steer can run twice in one turn: when the model labels an answer as a request for help
+  (hint_request), the interviewer node sends the turn back here as a hint. The persona's rule then
+  applies however the request was worded, and the request is never recorded as an answer.
 """
 
 from __future__ import annotations
@@ -63,7 +66,8 @@ def choose_route(state: dict, topic_ids: list[str], elapsed_s: float, max_second
         if index >= len(topic_ids):
             return {"route": "close"}
         fixed = {"final_text": HINT_DECLINED} if declined_hint else {}
-        return {"route": "interviewer", "mode": "new_topic" if declined_hint else "skip", **new_topic(index), **fixed}
+        mode = "new_topic" if declined_hint else "skip"
+        return {"route": "interviewer", "mode": mode, "pending_answer": None, **new_topic(index), **fixed}
     mode = intent if intent in ("start", "hint", "rephrase") else "answer"  # "repeat" with nothing asked yet: answer it
     return {"route": "interviewer", "mode": mode, "pending_answer": pending}
 

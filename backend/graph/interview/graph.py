@@ -5,6 +5,8 @@
                           |---> nudge -------------------'          (the candidate stayed silent; no LLM)
                           '---> close -------------------'          (end, time cap, past the last topic; no LLM)
 
+    interviewer -> steer: the model labelled an answer hint_request; steer then handles it as a hint.
+
 Separate from the recruiter graph (graph/graph.py): no retrieval, no tools, no booking. It shares only
 the event contract (token events) and the input keys of graph/runner.py, so voice_turn runs either one.
 
@@ -47,7 +49,8 @@ def build_interview_graph(generate_fn: Callable, topics: list[Topic], checkpoint
     graph.add_edge(START, "ingest")
     graph.add_edge("ingest", "steer")
     graph.add_conditional_edges("steer", lambda state: state["route"], ["interviewer", "repeat", "close", "nudge"])
-    graph.add_edge("interviewer", "advance")
+    graph.add_conditional_edges("interviewer", lambda state: "steer" if state.get("route") == "steer" else "advance",
+                                ["steer", "advance"])
     graph.add_edge("advance", "response")
     graph.add_edge("repeat", "response")
     graph.add_edge("nudge", "response")

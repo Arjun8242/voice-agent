@@ -3,7 +3,8 @@
 ingest       record the turn, classify its intent, reset per-turn fields (no LLM)
 repeat       "can you repeat that": replay the last question word for word (no LLM)
 nudge        the candidate stayed silent: say the persona's fixed nudge line (no LLM)
-interviewer  one streamed model call; the control tag is stripped before anything is spoken
+interviewer  one streamed model call; the control tag is stripped before anything is spoken.
+             A tag saying hint_request on an answer stops the reply and sends the turn back to steer.
 response     save what the interviewer said to the history
 steer, advance and close (no LLM) are in flow.py.
 
@@ -15,12 +16,13 @@ CancelledError is never caught here, so a barge-in stops the model call at once.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import aclosing
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.config import get_stream_writer
 
 from backend.graph.interview.prompt import build_turn_message, load_interviewer_prompt
-from backend.graph.interview.tag import TagBuffer
+from backend.graph.interview.tag import HINT_REQUEST, TagBuffer
 from backend.graph.nodes.ingest import heard_history
 from backend.interview.intents import classify_intent
 from backend.interview.personas import get_persona
@@ -80,12 +82,17 @@ def create_interviewer_node(generate_fn: Callable, topics: list[Topic]):
         next_title = topics[index + 1]["title"] if index + 1 < len(topics) else None
         message = build_turn_message(state, topics[index], get_persona(state.get("persona")), next_title)
         tags, spoken, errors = TagBuffer(), "", list(state.get("errors", []))
+        watch_for_hint = state.get("mode") == "answer"  # in hint mode the model is meant to help
         try:
-            async for piece in generate_fn(message, load_interviewer_prompt()):
-                if isinstance(piece, LlmUsage):
-                    write(usage_event(piece))
-                    continue
-                spoken += speak(write, tags.feed(piece))
+            async with aclosing(generate_fn(message, load_interviewer_prompt())) as stream:
+                async for piece in stream:
+                    if isinstance(piece, LlmUsage):
+                        write(usage_event(piece))
+                        continue
+                    text = tags.feed(piece)
+                    if watch_for_hint and tags.decision == HINT_REQUEST:
+                        return asked_for_hint(errors)  # the tag comes first, so nothing of this reply was spoken
+                    spoken += speak(write, text)
         except Exception as err:  # CancelledError is a BaseException and passes through
             errors.append(f"interviewer: {err}")
         spoken += speak(write, tags.finish())
@@ -99,6 +106,12 @@ def create_interviewer_node(generate_fn: Callable, topics: list[Topic]):
         return update
 
     return interviewer_node
+
+
+def asked_for_hint(errors: list[str]) -> dict:
+    """The model labelled the turn a request for help. Back to steer as a hint turn: code then gives
+    the hint (neutral) or declines it and moves on (strict), exactly as for "can I get a hint"."""
+    return {"intent": "hint", "route": "steer", "decision": HINT_REQUEST, "tag_ok": True, "errors": errors}
 
 
 def speak(write: Callable[[dict], None], text: str) -> str:

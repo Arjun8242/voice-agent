@@ -23,6 +23,9 @@ import re
 from backend.interview.personas import ALL_DECISIONS, Decision
 
 FALLBACK_DECISION: Decision = "next"
+# Not a follow-up but a label: the candidate asked for help instead of answering, in words the
+# phrase rules (interview/intents.py) did not catch. The interviewer node acts on it, never the model.
+HINT_REQUEST: Decision = "hint_request"
 MAX_TAG_CHARS = 120  # a tag longer than this is broken; stop holding the stream back
 TAG = re.compile(r"\[\[(.*?)\]\]", re.S)
 
@@ -33,7 +36,7 @@ def parse_tag(body: str) -> Decision | None:
         key, _, value = field.partition("=")
         if key.strip().lower() == "decision":
             decision = value.strip().lower()
-            return decision if decision in ALL_DECISIONS else None
+            return decision if decision in (*ALL_DECISIONS, HINT_REQUEST) else None
     return None
 
 

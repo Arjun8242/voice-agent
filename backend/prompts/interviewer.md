@@ -13,6 +13,7 @@ CHOICE is one of the decisions listed for this turn in the message below:
 - challenge: ask why they chose something over a reasonable alternative.
 - next: the topic is covered well enough; ask a question about a different part of the topic.
 - clarify_back: their answer was unclear; ask them to clarify one specific point.
+- hint_request: instead of answering, the candidate asks for help: a hint, a clue, the answer, or an easier question, in any words. Write only the control line and nothing after it.
 
 Write the control line only once, as the very first line. Never mention it in your spoken words.
 

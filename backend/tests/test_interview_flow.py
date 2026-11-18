@@ -97,7 +97,7 @@ def test_after_the_cap_only_next_is_offered_and_the_topic_moves():  # T21
     interview.say("b")  # neutral allows two follow-ups
     _, state = interview.say("c")
     prompt = interview.prompt()
-    assert "Decisions allowed this turn: next." in prompt and CAP_REACHED in prompt
+    assert "Decisions allowed this turn: next, hint_request." in prompt and CAP_REACHED in prompt  # the label stays offered
     assert "ask them to explain what FitAI does" in prompt
     assert (state["topic_index"], state["followups_used"], state["level"]) == (1, 0, 1)
     assert [a["topic_id"] for a in state["answers"]] == ["beacon", "beacon", "beacon"]
@@ -304,3 +304,33 @@ def test_a_nudge_after_the_end_says_nothing_not_the_closing():
     interview.say("Let's end the interview.")
     spoken, _ = interview.say("", nudge=0)
     assert spoken == ""
+
+
+# --- a hint request the phrase rules miss: the model labels it, code decides ---------------
+
+REWORDED_HINT = "I want you to give some level of hint now"  # live test 1.8: no fixed phrase matches it
+LEAKED_HINT = "Think about the advisory lock."  # what a model might write after the label anyway
+
+
+def test_a_reworded_hint_request_to_the_strict_interviewer_is_declined_by_code_not_the_model():
+    leak_in_the_tag_piece = [f"[[decision=hint_request]]\n{LEAKED_HINT}"]  # the label and a hint in one streamed piece
+    interview = Interview(reply("next", OPENING), leak_in_the_tag_piece, reply("next", "What does FitAI do?"))
+    interview.say("", persona="strict")
+    spoken, state = interview.say(REWORDED_HINT)
+    assert spoken == f"{HINT_DECLINED} What does FitAI do?"  # the leaked hint is never spoken
+    assert state["intent"] == "hint" and state["topic_index"] == 1
+    assert state.get("answers", []) == []  # a request for help is not an answer to grade
+
+
+def test_a_reworded_hint_request_to_the_neutral_interviewer_gets_a_hint_on_the_same_topic():
+    interview = opened(reply("hint_request", LEAKED_HINT), reply("probe", "Think about locks. What does Beacon do?"))
+    spoken, state = interview.say(REWORDED_HINT)
+    assert spoken == "Think about locks. What does Beacon do?"
+    assert "asked for a hint" in interview.prompt()
+    assert (state["topic_index"], state["followups_used"], state.get("answers", [])) == (0, 0, [])
+
+
+def test_in_hint_mode_the_label_is_ignored_so_the_turn_cannot_loop():
+    interview = opened(reply("hint_request", "Think about locks. What does Beacon do?"))
+    spoken, state = interview.say("Can I get a hint?")
+    assert spoken == "Think about locks. What does Beacon do?" and len(interview.model.calls) == 2
