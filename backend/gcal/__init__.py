@@ -5,7 +5,7 @@ try:
 except (ImportError, ModuleNotFoundError):
     from backend.config import CALENDAR_BACKEND
 
-from .adapter import CalendarAdapter, CalendarError, Event, Interval
+from .adapter import CalendarAdapter
 from .fake import FakeCalendar
 
 

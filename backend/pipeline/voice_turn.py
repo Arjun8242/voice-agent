@@ -7,6 +7,7 @@ graph's stream events into WebSocket messages and speech:
     token      -> assistant_text message, and the sentence splitter feeds TTS
     card       -> ui_card message (the tools node emits it as soon as the tools finish)
     retrieval  -> metric message (rag_complete)
+    usage      -> added to the turn's token totals in the turn log (observability/usage.py)
     booking_execute -> on_booking_execute(event): the calendar call after a confirm, run outside the turn
 
 The graph runs inside this coroutine with the async API and nothing is detached, so
@@ -33,6 +34,9 @@ except (ImportError, ModuleNotFoundError):
     from backend.pipeline.sentence import extract_next_sentence
     from backend.providers.tts import stream_tts
 
+from backend.observability.usage import add_usage, empty_totals
+from backend.pipeline import fixed_audio
+
 Send = Callable[..., Awaitable[None]]
 
 
@@ -45,21 +49,31 @@ async def speak_sentence(
     elapsed: Callable[[], int],
     on_audio: Callable[[], None],
     tts_client: httpx.AsyncClient,
+    speaker: str = "",
 ) -> None:
-    """TTS one sentence. Always fires tts_end in finally."""
+    """TTS one sentence in the given voice ("" = the default). Always fires tts_end in finally.
+    A fixed interviewer line plays from its recording when there is one (pipeline/fixed_audio.py)."""
     id_buf = struct.pack("<I", sentence_id)
     produced_first = False
+    heard: list[bytes] = []
 
     try:
         async def on_chunk(mp3: bytes) -> None:
             nonlocal produced_first
+            heard.append(mp3)
             await send(id_buf + mp3)
             if first_audio["sent_ms"] is None:
                 first_audio["sent_ms"] = elapsed()
                 produced_first = True
                 on_audio()
 
-        await stream_tts(text, interrupt_event, on_chunk, tts_client)
+        recording = fixed_audio.recorded_audio(text, speaker)
+        if recording is not None:
+            await on_chunk(recording)
+            return
+        await stream_tts(text, interrupt_event, on_chunk, tts_client, speaker)
+        if not interrupt_event.is_set():
+            fixed_audio.save_audio(text, speaker, b"".join(heard))
 
     except asyncio.CancelledError:
         raise
@@ -87,6 +101,10 @@ async def voice_turn(
     visitor_timezone: str = "",
     ui_action: dict | None = None,
     on_booking_execute: Callable[[dict], None] | None = None,
+    persona: str = "",
+    speaker: str = "",
+    nudge: int | None = None,
+    plan: dict | None = None,
 ) -> None:
     """Run one turn through the graph. Cancellable via task cancellation or interrupt_event.
 
@@ -96,6 +114,9 @@ async def voice_turn(
     the graph adds it to the history ahead of this question.
     timings: stages measured before this turn started (turn_id, stt_ms, wait_ms). When given, the
     turn's stage times are added and one line is written to the turn log (observability/timings.py).
+    persona and speaker are for interview mode: the persona goes to the graph, the speaker (its voice) to TTS.
+    nudge (interview mode): this turn says the nudge line with that index instead of answering speech.
+    plan (interview mode): this session's plan, saved in the graph's state.
     """
 
     t0 = time.perf_counter()
@@ -107,16 +128,17 @@ async def voice_turn(
     cancelled = False
     marks: dict = {"rag_ms": None, "first_token_ms": None, "first_sentence_ms": None}
     tools_used: list[str] = []
+    tokens = empty_totals()
 
     def log_turn(interrupted: bool) -> None:
         """One line in the turn log. A cut-off turn keeps the times it reached; its total_ms is empty
         because it is not a real total, and cut_off_ms says when the visitor cut in."""
         if timings is None:
             return
-        record = {**timings, **marks, "session_id": session_id, "first_audio_ms": first_audio["sent_ms"],
+        record = {**timings, **marks, **tokens, "session_id": session_id, "first_audio_ms": first_audio["sent_ms"],
                   "total_ms": None if interrupted else elapsed(), "interrupted": interrupted,
                   "cut_off_ms": elapsed() if interrupted else None, "tools": tools_used, "created_at": time.time()}
-        parts = (record.get("stt_ms"), record.get("wait_ms"), record["first_audio_ms"])
+        parts = (record.get("stt_ms"), record.get("hold_ms", 0), record.get("wait_ms"), record["first_audio_ms"])
         record["speech_end_to_first_audio_ms"] = round(sum(parts), 1) if None not in parts else None
         append_turn_log(record)
 
@@ -131,11 +153,13 @@ async def voice_turn(
             first_audio, elapsed,
             lambda: setattr(state, "agent_speaking", True),
             tts_client,
+            speaker,
         ))
 
     try:
         async with asyncio.TaskGroup() as tg:
-            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone, ui_action):
+            async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone, ui_action,
+                                                 persona, nudge, plan):
                 if mode == "values":  # state after each step: only the tool calls are needed here
                     tools_used = [c["name"] for c in event.get("tool_calls", [])]
                     continue
@@ -166,6 +190,9 @@ async def voice_turn(
 
                 elif kind == "booking_execute" and on_booking_execute is not None:
                     on_booking_execute(event)  # the connection runs it as its own task: it must outlive this turn
+
+                elif kind == "usage":
+                    add_usage(tokens, event)
 
                 elif kind == "retrieval":
                     marks["rag_ms"] = event["ms"]

@@ -10,7 +10,7 @@ import pytest
 from backend.graph.graph import build_graph
 from backend.graph.nodes.agent import ERROR_REPLY
 from backend.pipeline.barge_in import BargeIn
-from backend.pipeline.sentence import extract_next_sentence, extract_sentences
+from backend.pipeline.sentence import extract_next_sentence
 from backend.server.session import new_conversation
 from backend.tests.helpers import DESCRIPTIONS, FakeGraph, ScriptedModel, call, make_kb, no_retrieval, vt
 from backend.tools.registry import build_registry
@@ -34,7 +34,7 @@ def send(sent):
 
 @pytest.fixture(autouse=True)
 def fake_tts(monkeypatch):
-    async def stream_tts(text, interrupt_event, on_chunk, client):
+    async def stream_tts(text, interrupt_event, on_chunk, client, speaker=""):
         await on_chunk(b"mp3:" + text.encode())
     monkeypatch.setattr(vt, "stream_tts", stream_tts)
 
@@ -91,9 +91,11 @@ def test_a_cancelled_turn_stops_and_sends_no_done(send, sent):
 # --- splitting the answer into sentences -----------------------------------------------
 
 def test_dots_inside_names_and_numbers_do_not_end_a_sentence():
-    out = extract_sentences("It uses a Next.js dashboard and Node.js workers. Version 3.5 shipped in 2026. Done now.")
-    assert out["sentences"] == ["It uses a Next.js dashboard and Node.js workers.", "Version 3.5 shipped in 2026."]
-    assert out["remaining"] == "Done now."  # the last sentence waits for the end-of-stream flush
+    first = extract_next_sentence("It uses a Next.js dashboard and Node.js workers. Version 3.5 shipped in 2026. Done now.")
+    second = extract_next_sentence(first["remaining"])
+    assert (first["sentence"], second["sentence"]) == ("It uses a Next.js dashboard and Node.js workers.",
+                                                       "Version 3.5 shipped in 2026.")
+    assert extract_next_sentence(second["remaining"]) is None  # the last sentence waits for the end-of-stream flush
 
 
 def test_streamed_tokens_give_the_same_sentences_as_the_whole_text():
@@ -109,43 +111,44 @@ def test_streamed_tokens_give_the_same_sentences_as_the_whole_text():
     assert spoken == ["Arjun built Beacon with Next.js and Express.", "It is shipped.", "Anything else?", "Ask away."]
 
 
-# --- telling real speech from a cough ------------------------------------------------------
+# --- telling an interruption from an "okay" or a cough ---------------------------------------
 
-def barge_in(answering, speaking):
+def barge_in(answering=True, speaking=True):
     cuts = []
-    detector = BargeIn(is_answering=lambda: answering["now"], is_speaking=lambda: speaking,
-                       interrupt=lambda: cuts.append(1), confirm_ms=50)
+    detector = BargeIn(is_answering=lambda: answering, is_speaking=lambda: speaking, interrupt=lambda: cuts.append(1))
     return detector, cuts
 
 
-def test_speech_over_the_answer_cuts_it_off_only_after_it_lasts():
-    async def scenario():
-        answering = {"now": True}
-        detector, cuts = barge_in(answering, speaking=True)
+def test_words_over_the_playing_answer_cut_it_off():
+    detector, cuts = barge_in()
+    detector.on_speech_start()
+    assert cuts == []  # sound alone could still be an "okay"
+    detector.on_partial("and what about")
+    assert cuts == [1]
+
+
+def test_an_acknowledgement_or_no_words_over_the_playing_answer_never_cuts_it_off():
+    for partial in ["okay", "Okay.", "mm hmm", "Yeah", "acha", "", "  "]:
+        detector, cuts = barge_in()
         detector.on_speech_start()
-        await asyncio.sleep(0.01)
-        assert cuts == []  # too short to be sure yet
-        await asyncio.sleep(0.1)
-        assert cuts == [1]
-        detector.dispose()
-    asyncio.run(scenario())
-
-
-def test_a_short_noise_or_an_answer_that_already_finished_is_not_cut_off():
-    async def scenario():
-        answering = {"now": True}
-        cough, cuts = barge_in(answering, speaking=True)
-        cough.on_speech_start()
-        await asyncio.sleep(0.01)
-        cough.on_speech_end()  # stopped before the confirm time
-        await asyncio.sleep(0.1)
+        detector.on_partial(partial)
         assert cuts == []
-        cough.dispose()
 
-        late, late_cuts = barge_in(answering, speaking=True)
-        late.on_speech_start()
-        answering["now"] = False  # the answer finished on its own while we waited
-        await asyncio.sleep(0.1)
-        assert late_cuts == []
-        late.dispose()
-    asyncio.run(scenario())
+
+def test_speech_before_any_audio_plays_cuts_the_turn_at_once():
+    detector, cuts = barge_in(speaking=False)
+    detector.on_speech_start()
+    assert cuts == [1]
+
+
+def test_speech_after_the_answer_finished_cuts_nothing():
+    detector, cuts = barge_in(answering=False, speaking=False)
+    detector.on_speech_start()
+    detector.on_partial("next question please")
+    assert cuts == []
+
+
+def test_a_late_partial_before_any_audio_does_not_cancel_the_turn_it_belongs_to():
+    detector, cuts = barge_in(speaking=False)  # the turn these words started is running; no audio yet
+    detector.on_partial("tell me about beacon")
+    assert cuts == []  # before audio, only a new speech start interrupts

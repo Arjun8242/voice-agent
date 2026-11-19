@@ -8,18 +8,25 @@ The session id doubles as the checkpointer thread id, so history is per session.
 import time
 from typing import AsyncIterator
 
+from backend.observability.usage import add_usage, empty_totals
+
 try:
     from backend.observability.redact import tracing_callbacks
 except (ImportError, ModuleNotFoundError):
     from observability.redact import tracing_callbacks
 
 async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "", visitor_timezone: str = "",
-                      ui_action: dict | None = None) -> AsyncIterator[tuple[str, object]]:
+                      ui_action: dict | None = None, persona: str = "", nudge: int | None = None,
+                      plan: dict | None = None) -> AsyncIterator[tuple[str, object]]:
     """Yield ("custom", event) as the graph emits them and ("values", state) after each step.
 
     interrupted_reply: what the visitor heard of the previous answer before cutting in.
     visitor_timezone: IANA name from the browser; saved in the checkpoint like the rest of the state.
     ui_action: a click on a booking card ({action, payload}); text is then "".
+    persona: interview graph only, the interviewer persona; saved in its state on the first turn.
+    nudge: interview graph only, the index of the nudge to say after the candidate stayed silent.
+    plan: interview graph only, this session's plan (topics, profile_summary, glossary;
+    interview/plan.py InterviewPlan); sent every turn it is known and saved in its state.
     """
 
     config = {"configurable": {"thread_id": session_id}}
@@ -31,24 +38,37 @@ async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str 
         inputs["visitor_timezone"] = visitor_timezone
     if interrupted_reply:
         inputs["interrupted_reply"] = interrupted_reply
+    if persona:
+        inputs["persona"] = persona
+    if nudge is not None:
+        inputs["nudge"] = nudge
+    if plan:
+        inputs.update(plan)
 
     async for mode, chunk in graph.astream(inputs, config, stream_mode =["custom", "values"]):
         yield mode, chunk
 
 
-async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = None, visitor_timezone: str = "") -> dict:
+async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = None, visitor_timezone: str = "",
+                   persona: str = "", plan: dict | None = None) -> dict:
     start = time.perf_counter()
     first_token_ms = None
     retrieval: dict ={}
     final: dict = {}
+    tokens = empty_totals()
 
-    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text, ui_action = ui_action, visitor_timezone = visitor_timezone):
+    async for mode, chunk in stream_turn(graph, session_id = session_id, text = text, ui_action = ui_action,
+                                         visitor_timezone = visitor_timezone, persona = persona,
+                                         plan = plan):
 
         if mode == "custom" and chunk.get("type") == "token" and first_token_ms is None:
             first_token_ms = round((time.perf_counter() - start)*1000, 1)
 
         elif mode == "custom" and chunk.get("type") == "retrieval":
             retrieval = chunk
+
+        elif mode == "custom" and chunk.get("type") == "usage":
+            add_usage(tokens, chunk)
 
         elif mode == "values":
             final = chunk
@@ -65,6 +85,7 @@ async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = N
         "errors": final.get("errors", []),
         "stage_ms": final.get("stage_ms", {}),
         "first_token_ms": first_token_ms,
+        "usage": tokens,  # summed over every LLM call of the turn, as Groq reported them
         "total_ms": round((time.perf_counter() - start) * 1000, 1),
     }
 

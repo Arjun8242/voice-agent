@@ -14,6 +14,10 @@ const completedSentences = new Set<number>();
 const sentenceStarts = new Map<number, number>();
 let draining = false;
 let streamDone = false;
+// Audio frames carry a sentence id but no turn id. Ids only go up on a connection, so after a reset
+// every id seen so far belongs to an answer that was cut off or replaced, and is dropped if it arrives late.
+let highestSeenId = -1;
+let minAcceptedId = 0;
 
 export function initPlayback(audioEl: HTMLAudioElement): void {
   audio = audioEl;
@@ -28,10 +32,14 @@ export function initPlayback(audioEl: HTMLAudioElement): void {
   });
 }
 
-export function appendChunk(frame: ArrayBuffer): void {
+/** Queue one audio frame. Returns false if it was dropped as a late frame of an earlier answer. */
+export function appendChunk(frame: ArrayBuffer): boolean {
   const view = new DataView(frame);
   const sentenceId = view.getUint32(0, true);
   const mp3 = frame.slice(4);
+
+  if (sentenceId < minAcceptedId) return false;
+  highestSeenId = Math.max(highestSeenId, sentenceId);
 
   if (expectedSentenceId === null) {
     expectedSentenceId = sentenceId;
@@ -42,6 +50,12 @@ export function appendChunk(frame: ArrayBuffer): void {
   }
   sentenceChunks.get(sentenceId)!.push(mp3);
   drain();
+  return true;
+}
+
+/** From now on, ignore frames of every sentence seen so far (called on each reset). */
+export function dropAudioSoFar(): void {
+  minAcceptedId = highestSeenId + 1;
 }
 
 export function markSentenceDone(sentenceId: number): void {
@@ -106,6 +120,7 @@ export function currentSentenceId(): number | null {
 }
 
 export function resetPlayback(audioEl: HTMLAudioElement): void {
+  dropAudioSoFar();
   expectedSentenceId = null;
   sentenceChunks.clear();
   completedSentences.clear();

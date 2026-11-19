@@ -30,12 +30,23 @@ SARVAM_STT_URL = (
     "&stream_type=fast"
 )
 STT_QUEUE_MAX = 50
+# How long Sarvam waits in silence before it ends a speech segment. Recruiter mode keeps the provider
+# default (500 ms) by not sending the parameter; an interview candidate pauses to think, so fewer, longer
+# segments. A starting guess from the plan (900-1200), not yet measured with stream_type=fast.
+STT_INTERVIEW_SILENCE_MS = 1000
+# An interview ends after this long, at the next candidate answer. Caps paid STT minutes and TTS (plan §8).
+INTERVIEW_MAX_SECONDS = 900
+# Time one question and its answer take, for keeping time for later stages' minimum questions.
+# A starting guess from the v2 design; tune it from the turn log.
+SECONDS_PER_QUESTION = 75
 
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech/stream"
 TTS_LANGUAGE = "en-IN"
 TTS_MODEL = "bulbul:v3"
 TTS_SPEAKER = "suhani"
 TTS_OUTPUT_FORMAT = "mp3"
+# The interviewer's fixed lines, recorded once per voice (pipeline/fixed_audio.py). Under data/, never committed.
+TTS_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "tts_cache"
 
 CALENDAR_BACKEND = os.environ.get("CALENDAR_BACKEND", "fake")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")

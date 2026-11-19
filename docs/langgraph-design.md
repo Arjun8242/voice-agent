@@ -57,7 +57,7 @@ Eval runner --> POST /internal/turn (text mode, no voice)
 ### 3.1 One turn, end to end
 
 1. The browser streams mic audio to the backend over WebSocket.
-2. The voice pipeline runs STT. On the final transcript the turn manager assigns a `turn_id`, cancels any turn still running, and starts the agent graph in the same process.
+2. The voice pipeline runs STT. Final transcripts are held and merged by the end-of-turn controller (`pipeline/turn_taking.py`) until the visitor is done; a short acknowledgement over the answer is dropped. Then the turn manager assigns a `turn_id`, cancels any turn still running, and starts the agent graph in the same process.
 3. The graph runs (section 4).
 4. Tokens stream out of the graph. The turn manager sends complete sentences to TTS and plays audio as it arrives.
 5. Cards travel as separate events and render at once.
@@ -74,6 +74,10 @@ Eval runner --> POST /internal/turn (text mode, no voice)
 | `ui.card` / `ui.card.dismiss` | server to client | turn\_id, card\_id, type, data |
 | `ui.action` | client to server | action (select\_slot, submit\_details, confirm, cancel\_booking, confirm\_cancel, keep\_booking), payload |
 | `booking.update` | server to client | booking\_id, status, card data; no turn\_id |
+| `interview.start` | client to server | persona (`neutral` or `strict`). Sent by the Start click, so the browser allows the interviewer's audio. Switches the connection to the interview graph, its hold times, its STT silence and the persona's voice, then the interviewer asks its opening question (on a reconnect, the last question again). Card clicks are ignored from then on |
+| `interview.end` | client to server | none. The End click: the same turn as saying "let's end the interview", so the interviewer speaks its closing line; a question still being asked is cut off first |
+| `interview.report` | server to client | status: pending, ready (with the report: a 1-5 score per answer, correct, missing and incorrect points quoted from the notes, unverifiable claims, 3 tips) or failed. Sent once, when the interview ends however it ends; no turn\_id |
+| `turn.state` | server to client | state: speaking, holding, thinking or idle (the end-of-turn controller in `pipeline/turn_taking.py`); no turn\_id |
 | `turn.cancelled` / `error` | server to client | turn\_id / code, message, retryable |
 
 Every turn event carries `turn_id`. The client drops events from turns at or before the last `turn.cancelled`, so a card from an interrupted request never appears late. Session-level events (`session.ready`, `booking.update`) carry no `turn_id` and always pass that guard: a booking result must reach the visitor even when the turn that started it was cut off. `booking.update` carries booking\_id and status, and the client renders it by booking\_id, so a repeat changes nothing.
@@ -84,7 +88,7 @@ The voice path calls the graph in the same process, so there is no internal stre
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /internal/turn` | Body: session\_id, turn\_id, input (speech text or ui\_action), visitor\_tz. Returns one JSON object: reply, tool calls, cards, stage timings. Runs the same graph as the voice path without STT or TTS; the eval runner uses it. API key only |
+| `POST /internal/turn` | Body: session\_id, turn\_id, input (speech text or ui\_action), visitor\_tz. Returns one JSON object: reply, tool calls, cards, stage timings. Runs the same graph as the voice path without STT or TTS; the eval runner uses it. With mode `interview`, runs the interview graph (`graph/interview/`) instead: body takes `answer` (none for the opening question) and `persona`, and the reply adds the interview flow state. API key only |
 | `POST /internal/kb/reindex` | Rebuilds the index (also available as a CLI command) |
 | `GET /health` | Liveness |
 
@@ -386,7 +390,9 @@ voice-agent/
     tools/             registry.py, schemas.py, search_projects.py, project_detail.py, skills.py, links.py, check_availability.py, start_booking.py, cancel_booking.py, ...
     gcal/              adapter.py, fake.py, google.py (named gcal so it cannot shadow Python's calendar module)
     observability/     tracing.py, redact.py, timings.py
-    tests/             one file per workflow or section: helpers.py (shared fakes), test_booking.py, test_agent.py, test_spoken_answer.py, test_voice_conversation.py (barge-in and session start), test_knowledge_base.py, test_google_calendar.py, test_observability.py
+    tests/             one folder per area, one file per workflow or section; helpers.py (shared fakes) at the top.
+                       voice/ (turn taking, STT, barge-in and session start, spoken answers), recruiter/ (agent, booking, calendar, knowledge base),
+                       shared/ (/internal/turn, LLM usage, observability), interview/unit/ (one component each), interview/workflow/ (the graph, flow and voice end to end)
     evals/             real LLM, fake calendar. Cases: routing.yaml (right tool and arguments), unanswerable.yaml (refusals, boundaries, invented projects), grounded.yaml (facts from the knowledge base), booking.yaml (multi-turn and the whole flow), smoke.yaml (retrieval only)
                        Runners: run_questions.py (routing, unanswerable, grounded), run_booking.py, run_smoke.py, run_all.py (every suite, writes the report). Targets: thresholds.yaml
                        A judge for groundedness is planned (judge.py) and not built; the grounded and unanswerable suites use code checks until then
@@ -434,5 +440,19 @@ Order: Phase 0 (S1). Phase 1, knowledge base and retrieval v1 (S2 to S6). Phase 
 | Content work underestimated | Treat S2 and S17 as first-class tasks |
 
 Settled: D1, the backend is Python. Open decisions: D3 RAG versus a full-context prompt, decided by one eval run. D4 index storage: in-memory files by default, pgvector only if needed. D5 reranker or output verifier: only on evidence.
+
+## 13. Interview mode
+
+A second graph, `graph/interview/`, runs a spoken mock interview planned from the candidate's resume and an optional job description. Its design and build steps are in `docs/Interviewer Mode v2 — Resume + JD Interview Design.md`. It shares the voice pipeline, barge-in, heard-history (`heard_history` in `nodes/ingest.py`), the Groq client and the turn log with the recruiter graph, and nothing else: no retrieval, no tools, no booking.
+
+| Node | LLM | Job |
+| --- | --- | --- |
+| `ingest` | no | Records the turn, applies heard-history, classifies the intent by fixed phrases (`interview/intents.py`) |
+| `steer` | no | Decides the turn: end, repeat, nudge, move to the next topic, or ask the model. Enforces the follow-up cap before the call |
+| `interviewer` | yes | One streamed call. The reply starts with a control tag (`[[decision=probe]]`) that `tag.py` strips before anything is spoken. If the tag says `hint_request` (the candidate asked for help in words the fixed phrases missed), the reply is dropped unspoken and the turn goes back to `steer` as a hint, so the persona's hint rule is applied by code |
+| `advance` | no | Counts the follow-up and climbs the ladder, or moves topic; records the answer only now, so a cut-off turn is never graded |
+| `repeat`, `nudge`, `close` | no | The last question again, a persona's fixed nudge line, the closing line |
+
+Turn-taking sits outside both graphs, in `pipeline/turn_taking.py`: final transcripts are held and merged until the speaker is done. The hold depends on how the last transcript ended, and new speech cancels it. Interview mode uses longer holds and a longer Sarvam end-of-speech silence. The end-of-interview report (`interview/evaluate.py`) is one more call, owned by the connection like a booking. Every quote it returns is checked against the topic's notes before the browser sees it.
 
 Terms: idempotency means repeating a request leaves one result. A checkpoint is the saved graph state. recall@k is how often a relevant chunk is in the top k. MRR is the average of 1 over the rank of the first relevant chunk. p50 and p95 are the median and 95th-percentile latency. Reciprocal rank fusion merges two ranked lists by position.

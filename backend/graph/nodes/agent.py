@@ -18,6 +18,8 @@ from zoneinfo import ZoneInfo
 from langgraph.config import get_stream_writer
 from .tools import MAX_TOOL_STEPS
 
+from backend.observability.usage import LlmUsage, usage_event
+
 ERROR_REPLY = "Sorry, I had trouble answering that. Could you ask again?"
 HISTORY_ITEMS = 6
 
@@ -87,6 +89,9 @@ def create_agent_node(generate_fn, tools: list[dict] | None = None):
         try:
             done = state.get("tool_calls") or None
             async for piece in generate_fn(build_prompt(state, offered is not None), load_system_prompt(), tools=offered, tool_calls=done):
+                if isinstance(piece, LlmUsage):
+                    write(usage_event(piece))
+                    continue
                 if isinstance(piece, dict):
                     calls.append(piece)
                     continue

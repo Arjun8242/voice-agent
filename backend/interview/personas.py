@@ -1,0 +1,86 @@
+"""personas.py: how the interviewer behaves, as data, plus the fixed lines it speaks without the LLM.
+
+A persona differs in behaviour rules, not adjectives (docs/interviewer-mode-plan.md §4.1 G):
+which follow-up decisions it may take, whether it gives hints, what it says when the candidate goes
+quiet, and which TTS voice speaks. How many questions a topic gets is the topic's budget
+(interview/plan.py), the same for every persona. Two personas: "neutral"
+(the default) and "strict", which merges the plan's strict and challenging columns. Adding another
+is a new entry in PERSONAS; the graph and the connection read only these fields.
+
+Fixed lines (opening, intro, bridges, nudges, closing) never go through the LLM: they cost no tokens and can never say
+anything odd. Keep each to one or two short sentences, since every character is paid TTS.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+Decision = str  # "probe", "example", "challenge", "next", "clarify_back"; the graph enforces the list
+ALL_DECISIONS: tuple[Decision, ...] = ("probe", "example", "challenge", "next", "clarify_back")
+
+OPENING = "Hi, I'll be your interviewer today."
+INTRO_QUESTION = "Let's start: walk me through your background."
+THANKS = "Thanks."  # said before code moves to the next topic when the model was not called
+SKIP_ACK = "That's fine."
+CLOSING = "That's all the questions I have. Thank you for your time."
+HINT_DECLINED = "No hints in this round. Let's go to the next question."  # personas without hints
+
+# Said when the next topic starts a new stage, before its seed question. Keyed by the new stage's kind.
+BRIDGES: dict[str, str] = {
+    "deep_dive": "Let's go into your experience.",
+    "technical": "Let's move to the technical part.",
+    "behavioral": "Now a few questions about how you work with others.",
+    "achievement": "Finally, let's talk about something you're proud of.",
+}
+
+
+@dataclass(frozen=True)
+class Persona:
+    name: str
+    prompt_fragment: str  # added to the interviewer prompt: tone and follow-up style
+    allowed_decisions: tuple[Decision, ...]  # what the model may choose after an answer
+    challenge_from_level: int  # "challenge" is allowed from this difficulty level (1-3) on
+    gives_hints: bool  # False: a hint request gets "let's move on" instead
+    nudges: tuple[str, ...]  # spoken in order after silence; () turns nudges off
+    voice: str  # Sarvam bulbul:v3 speaker; same price per character for every voice
+
+
+NEUTRAL = Persona(
+    name="neutral",
+    prompt_fragment=(
+        "Tone: calm and neutral. Start with a brief acknowledgement that names one specific thing the "
+        "candidate said, without praising or judging it. Prefer follow-ups that probe one level deeper "
+        "into what they just said. Give a hint only when they ask for one."
+    ),
+    allowed_decisions=ALL_DECISIONS,
+    challenge_from_level=3,
+    gives_hints=True,
+    nudges=(
+        "Take your time. Say hint if you'd like one.",
+        "Would you like to move on to the next question?",
+    ),
+    # Sapwa, the gentle master ji: a lighter male voice. The recruiter keeps TTS_SPEAKER.
+    voice="aditya",  # shortcut: Sarvam's docs give no gender or timbre for v3 voices; confirm by listening in the Sarvam playground
+)
+
+STRICT = Persona(
+    name="strict",
+    prompt_fragment=(
+        "Tone: direct and exacting, never rude. Acknowledge in at most three words, without praise. "
+        "Ask for precision: the exact mechanism, number or component. Question decisions: ask why "
+        "they chose it over an alternative, but never claim the alternative is better. If an answer is "
+        "vague, say so in a few words and ask for the specific part again."
+    ),
+    allowed_decisions=("probe", "challenge", "next", "clarify_back"),  # no "give me an example" softeners
+    challenge_from_level=1,
+    gives_hints=False,
+    nudges=(),  # silence is the candidate's to use
+    voice="shubh",  # Sheru Bhai, the boss: the deeper male voice. Sarvam labels Shubh male; depth not documented, confirm by listening
+)
+
+PERSONAS: dict[str, Persona] = {NEUTRAL.name: NEUTRAL, STRICT.name: STRICT}
+
+
+def get_persona(name: str | None) -> Persona:
+    """The named persona, or neutral when the name is missing or unknown (it comes from the browser)."""
+    return PERSONAS.get(name or "", NEUTRAL)

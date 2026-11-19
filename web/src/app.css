@@ -1,28 +1,69 @@
 @import "tailwindcss";
 
-:root {
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 14%;
-  --card-foreground: 210 40% 98%;
-  --primary: 199 89% 48%;
-  --primary-foreground: 222 47% 11%;
-  --secondary: 217 33% 20%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 199 89% 48%;
-  --border: 217 33% 22%;
-  --ring: 199 89% 48%;
-  --radius: 0.5rem;
-}
-
-* {
-  border-color: hsl(var(--border));
+/* The viva! look (docs/viva-landing.html, docs/viva-design-blobs.html): cream paper with a dot grid,
+   thick ink outlines, hard offset shadows and a few bright fills. Components use these tokens and classes. */
+@theme {
+  --color-ink: #121212;
+  --color-cream: #fff6dc;
+  --color-sun: #ffe14d;
+  --color-lilac: #b9a4ff;
+  --color-tangerine: #ff9b4d;
+  --color-leaf: #8fe08a;
+  --color-sky: #7fd4ff;
+  --color-bubblegum: #ff8fc8;
+  --font-display: "Bricolage Grotesque", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
 }
 
 body {
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: 'Inter', system-ui, sans-serif;
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--color-ink);
+  background-color: var(--color-cream);
+  background-image: radial-gradient(var(--color-ink) 1.2px, transparent 1.2px);
+  background-size: 26px 26px;
+  background-position: -13px -13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* the tilted marquee and stickers stick out a few px: clip them rather than let phones scroll sideways */
+html, body { overflow-x: clip; }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--color-sky); outline-offset: 3px; }
+
+@layer components {
+  /* a chunky button that presses into its shadow */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    border: 3px solid var(--color-ink); border-radius: 18px; padding: 14px 26px;
+    font-weight: 800; font-size: 19px; background: var(--color-sun);
+    box-shadow: 6px 6px 0 var(--color-ink); transition: transform .1s, box-shadow .1s;
+  }
+  .btn:hover:not(:disabled) { transform: translate(-1px, -1px) rotate(-1deg); box-shadow: 7px 7px 0 var(--color-ink); }
+  .btn:active:not(:disabled) { transform: translate(4px, 4px); box-shadow: 2px 2px 0 var(--color-ink); }
+  .btn:disabled { opacity: .45; }
+  .btn-sm { padding: 8px 16px; font-size: 15px; border-radius: 14px; box-shadow: 3px 3px 0 var(--color-ink); }
+
+  .chip {
+    display: inline-block; border: 2.5px solid var(--color-ink); border-radius: 999px;
+    padding: 4px 12px; font-weight: 700; font-size: 14px; background: #fff;
+  }
+
+  /* a white panel with an ink outline and hard shadow: cards, the report, forms */
+  .panel { background: #fff; border: 3px solid var(--color-ink); border-radius: 20px; box-shadow: 4px 4px 0 var(--color-ink); }
+
+  .field {
+    width: 100%; border: 2.5px solid var(--color-ink); border-radius: 12px; background: #fff;
+    padding: 8px 10px; font: inherit; font-weight: 500; font-size: 15px;
+  }
+}
+
+/* use:reveal (lib/reveal.ts) adds .reveal, then .in once the block is on screen */
+.reveal { opacity: 0; translate: 0 26px; transition: opacity .6s ease, translate .6s cubic-bezier(.3,1.4,.5,1); }
+.reveal.in { opacity: 1; translate: 0 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .reveal { opacity: 1; translate: none; }
 }

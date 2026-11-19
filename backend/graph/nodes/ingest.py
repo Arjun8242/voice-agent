@@ -2,7 +2,7 @@
  
 import re
 
-from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, RemoveMessage
  
  
 def find_projects(query: str, aliases: dict[str, str]) -> set[str]:
@@ -14,17 +14,27 @@ def find_projects(query: str, aliases: dict[str, str]) -> set[str]:
             found.add(project_id)
     return found
 
+def heard_history(history: list[AnyMessage], interrupted_reply: str) -> list[AnyMessage]:
+    """Messages that record only what the visitor heard of a cut-off answer, ahead of the new message.
+
+    If the full answer was already saved (the cut came while it was still being spoken), it is
+    removed first, so the history never holds both versions. Returns [] when nothing was cut off.
+    Shared by every graph whose turns can be interrupted.
+    """
+    heard = interrupted_reply.strip()
+    if not heard:
+        return []
+    updates: list[AnyMessage] = []
+    if history and isinstance(history[-1], AIMessage):
+        updates.append(RemoveMessage(id=history[-1].id))
+    updates.append(AIMessage(heard))
+    return updates
+
+
 def create_ingest_node(aliases: dict[str, str]):
     async def ingest_node(state: dict) -> dict:
         query = (state.get("query") or "").strip()
-        messages = []
-        heard = (state.get("interrupted_reply") or "").strip()
-        if heard:  # the visitor cut the last answer off: keep only what they heard, ahead of the new question
-            history = state.get("messages") or []
-            if history and isinstance(history[-1], AIMessage):
-                # the full answer was already saved (the cut came while it was still being spoken): replace it
-                messages.append(RemoveMessage(id=history[-1].id))
-            messages.append(AIMessage(heard))
+        messages = heard_history(state.get("messages") or [], state.get("interrupted_reply") or "")
         click = state.get("ui_action")
         # a click is recorded by its action only, so the form's name and email never enter the history.
         # They are in ui_action for this one turn; observability/redact.py masks them in traces.

@@ -16,6 +16,7 @@ import pytest
 from fastapi.websockets import WebSocketState
 
 from backend.graph.graph import build_graph
+from backend.observability.timings import turn_records
 from backend.server.session import CUT_OFF_NOTE
 from backend.tests.helpers import call, no_retrieval
 
@@ -52,13 +53,13 @@ class FakeWebSocket:
 
 class FakeStt:
     def __init__(self, handlers):
-        self.handlers = handlers
+        self.handlers, self.audio, self.closed = handlers, [], 0
 
     def send_audio(self, data):
-        pass
+        self.audio.append(data)
 
     def close(self):
-        pass
+        self.closed += 1
 
 
 class GatedModel:
@@ -116,9 +117,11 @@ class Harness:
         await self.handlers.on_final(text)
 
     async def cut_in(self):
-        """The visitor starts speaking over the answer; returns the turn id the server reports as interrupted."""
+        """The visitor starts speaking over the answer; returns the turn id the server reports as interrupted.
+        The partial matters while audio plays: there, only words cut the answer off."""
         before = len(self.of_type("interrupted"))
         self.handlers.on_speech_start()
+        await self.handlers.on_partial("wait, actually")
         await self.until(lambda: len(self.of_type("interrupted")) > before, "the interrupted message")
         return self.of_type("interrupted")[-1]["turnId"]
 
@@ -140,7 +143,7 @@ class Harness:
         await self.until(lambda: len(self.of_type("tts_end")) >= count, f"{count} spoken sentences")
 
 
-def run(scenario, model, registry=None, graph=None):
+def run(scenario, model, registry=None, graph=None, interview_graph=None, evaluator=None, interview_plans=None):
     """Start a connection on a fresh graph (or the given one), run the scenario coroutine, then disconnect."""
     async def main():
         ws, holder = FakeWebSocket(), []
@@ -148,7 +151,8 @@ def run(scenario, model, registry=None, graph=None):
         graph = graph or build_graph(no_retrieval, model, aliases={}, registry=registry)
         original = connection.create_stt
         connection.create_stt = lambda handlers: holder.append(FakeStt(handlers)) or holder[-1]
-        task = asyncio.create_task(connection.handle_connection(ws, None, graph))
+        task = asyncio.create_task(connection.handle_connection(ws, None, graph, interview_graph=interview_graph,
+                                                                evaluator=evaluator, interview_plans=interview_plans))
         try:
             h = Harness(ws, holder, task, model)
             await h.until(lambda: holder, "the connection to start")
@@ -162,7 +166,7 @@ def run(scenario, model, registry=None, graph=None):
 
 @pytest.fixture(autouse=True)
 def fake_tts(monkeypatch):
-    async def stream_tts(text, interrupt_event, on_chunk, client):
+    async def stream_tts(text, interrupt_event, on_chunk, client, speaker=""):
         await on_chunk(b"mp3")
     # backend/__init__.py puts backend/ on sys.path, so connection may hold the top-level copy
     # (pipeline.voice_turn) instead of backend.pipeline.voice_turn. Patch the copy it really uses.
@@ -342,7 +346,7 @@ def test_10_after_playback_ended_speech_is_a_new_question_not_a_barge_in():
         h.ended(1)
         await asyncio.sleep(0.05)
         h.handlers.on_speech_start()
-        await asyncio.sleep(0.5)  # longer than the 300 ms barge-in confirm
+        await asyncio.sleep(0.5)
         assert h.of_type("interrupted") == []
         await h.say("q2")
         await h.answered(2)
@@ -353,7 +357,7 @@ def test_10_after_playback_ended_speech_is_a_new_question_not_a_barge_in():
 def test_11_cut_in_while_the_last_sentence_is_still_spoken_does_not_keep_two_answers(monkeypatch):
     model = GatedModel([f"{FIRST} ", f"{SECOND} "], ["Fine."])
 
-    async def slow_tts(text, interrupt_event, on_chunk, client):
+    async def slow_tts(text, interrupt_event, on_chunk, client, speaker=""):
         await on_chunk(b"mp3")
         if SECOND in text:
             await asyncio.sleep(1.5)  # the graph has finished and saved the answer; speech is not done
@@ -377,13 +381,71 @@ def test_12_speaking_again_while_the_next_turn_waits_keeps_the_heard_text():
         await h.say("q1")
         await h.spoken(2)
         first = await h.cut_in()  # the report has not arrived yet
-        await h.say("q2")  # turn 2 starts and waits for it
+        await h.say("q2")
+        await h.until(lambda: len(h.of_type("transcript_final")) == 2, "q2 to be committed")  # turn 2 waits for the report
         h.handlers.on_speech_start()  # the visitor keeps talking: turn 2 is cut off while it waits
         await h.until(lambda: len(h.of_type("interrupted")) == 2, "the second interrupt")
         h.report(first, 0)
         await h.say("q3")
         await h.answered(3)
         assert HEARD_FIRST in model.prompts[-1]
+    run(scenario, model)
+
+
+def test_16_short_okay_while_the_answer_plays_is_not_a_new_turn():
+    model = GatedModel([f"{FIRST} ", f"{SECOND} "], ["Fine."])
+
+    async def scenario(h):
+        await h.say("q1")
+        await h.answered(1)  # the server is done; the browser is still playing the answer
+        h.handlers.on_speech_start()
+        await h.handlers.on_partial("Okay")
+        await asyncio.sleep(0.5)  # a spoken "okay" plus Sarvam's end-of-speech silence lasts this long (live test 2.2)
+        h.handlers.on_speech_end()
+        await h.say("okay")
+        await asyncio.sleep(0.1)
+        assert h.of_type("interrupted") == []
+        assert [m["text"] for m in h.of_type("transcript_final")] == ["q1"]  # the browser never resets playback
+        assert len(model.prompts) == 1  # no turn was started for "okay"
+        h.ended(1)
+        await h.say("q2")
+        await h.answered(2)
+        assert f"Agent: {FIRST} {SECOND}" in model.prompts[1]  # heard in full, kept in full
+        assert "okay" not in model.prompts[1]
+    run(scenario, model)
+
+
+def test_17_short_real_question_while_the_answer_plays_replaces_it_with_the_heard_part():
+    model = GatedModel([f"{FIRST} ", f"{SECOND} "], ["Fine."])
+
+    async def scenario(h):
+        await h.say("q1")
+        await h.answered(1)  # the browser is still playing the answer
+        h.handlers.on_speech_start()
+        h.handlers.on_speech_end()  # too short for barge-in, but these are real words
+        await h.say("and beacon")
+        await h.until(lambda: h.of_type("interrupted"), "the answer to be cut off")
+        h.report(1, 0)
+        await h.answered(2)
+        assert f"Visitor: q1\n{HEARD_FIRST}" in model.prompts[1] and SECOND not in model.prompts[1]
+    run(scenario, model)
+
+
+def test_18_the_browser_is_told_when_the_visitor_is_thinking_and_when_the_turn_is_taken():
+    model = GatedModel(["Fine."])
+
+    async def scenario(h):
+        h.handlers.on_speech_start()
+        await h.say("let me think")
+        await h.until(lambda: h.of_type("turn_state"), "a turn_state message")
+        assert [m["state"] for m in h.of_type("turn_state")] == ["speaking", "thinking"]
+        h.handlers.on_speech_start()
+        await h.say("it uses a lock")
+        await h.answered(1)
+        states = [m["state"] for m in h.of_type("turn_state")]
+        assert states[-2:] == ["holding", "idle"]
+        assert all("turnId" not in m for m in h.of_type("turn_state"))  # never dropped as a stale turn's message
+        assert [m["text"] for m in h.of_type("transcript_final")] == ["it uses a lock"]
     run(scenario, model)
 
 
@@ -405,7 +467,8 @@ def test_13_each_finished_turn_logs_its_stage_times():
     assert r["turn_id"] == 1 and r["stt_ms"] >= 40 and r["wait_ms"] < 50 and r["tools"] == []
     for field in ("rag_ms", "first_token_ms", "first_sentence_ms", "first_audio_ms", "total_ms"):
         assert r[field] is not None, field
-    assert r["speech_end_to_first_audio_ms"] == round(r["stt_ms"] + r["wait_ms"] + r["first_audio_ms"], 1)
+    assert r["speech_end_to_first_audio_ms"] == round(r["stt_ms"] + r["hold_ms"] + r["wait_ms"] + r["first_audio_ms"], 1)
+    assert r["hold_ms"] >= 250 and r["turn_decision"] == "base_hold" and r["segments_merged"] == 1  # the recruiter hold is 300 ms
 
 
 def test_14_a_cut_off_turn_is_logged_as_interrupted_with_the_times_it_reached():
@@ -425,6 +488,7 @@ def test_14_a_cut_off_turn_is_logged_as_interrupted_with_the_times_it_reached():
     assert cut["total_ms"] is None and cut["cut_off_ms"] >= cut["first_audio_ms"]  # cut short: no fake total
     assert done["total_ms"] is not None and done["cut_off_ms"] is None
     assert cut["stt_ms"] is None and cut["speech_end_to_first_audio_ms"] is None  # no speech-end event was sent
+    assert cut["barge_in_ms"] is not None and "barge_in_ms" not in done  # audio was playing: the words cut it off
 
 
 def test_15_a_cut_in_before_any_audio_is_logged_as_given_up_waiting():
@@ -513,3 +577,103 @@ def test_an_invalid_timezone_falls_back_to_the_default():
         await h.answered(1)
     run(scenario, model, graph=graph)
     assert thread_state(graph, SID)["visitor_timezone"] == "Asia/Kolkata"
+
+
+# --- turn log: how the turn was taken (plan §7.3) --------------------------------------
+
+def test_a_turn_merged_from_two_finals_logs_both_segments_and_the_long_hold():
+    model = GatedModel(["Fine."])
+
+    async def scenario(h):
+        await h.say("the queue holds jobs and")
+        h.handlers.on_speech_start()
+        await h.say("workers pull them so")
+        await h.answered(1)
+    run(scenario, model)
+
+    (r,) = TURN_LOG
+    assert (r["segments_merged"], r["turn_decision"]) == (2, "long_hold") and r["hold_ms"] >= 700
+
+
+def test_a_reopened_turn_is_logged_as_reopened():
+    model = GatedModel([asyncio.Event()], ["Fine."])  # the first launch stalls before any audio
+
+    async def scenario(h):
+        await h.say("It uses Postgres.")
+        await h.until(lambda: model.prompts, "the first turn to reach the model")
+        h.handlers.on_speech_start()  # right after the commit, no audio yet: the turn is re-opened
+        await h.say("because of transactions")
+        await h.answered(2)
+    run(scenario, model)
+
+    cancelled, merged = TURN_LOG
+    assert cancelled["interrupted"] is True and "barge_in_ms" not in cancelled  # a re-open is not a barge-in
+    assert (merged["turn_decision"], merged["segments_merged"]) == ("reopened", 2)
+
+
+def test_the_billed_stt_seconds_get_their_own_line_that_the_report_skips(monkeypatch):
+    lines: list[dict] = []
+    monkeypatch.setattr(connection, "append_turn_log", lines.append)
+
+    async def scenario(h):
+        h.handlers.on_session_end(12.5)
+    run(scenario, GatedModel())
+
+    (line,) = lines
+    assert (line["type"], line["stt_audio_s"]) == ("stt_session", 12.5)
+    assert turn_records([line, {"turn_id": 1}]) == [{"turn_id": 1}]
+
+
+# --- held speech meets other events (plan T16, T17) ---------------------------------------
+
+def test_disconnect_during_the_hold_starts_no_turn():  # T16
+    model = GatedModel(["Fine."])
+
+    async def scenario(h):
+        await h.say("q1")  # held for 300 ms
+        h.ws.incoming.put_nowait(None)  # the browser goes away first
+        await asyncio.wait_for(h.task, 3)
+        await asyncio.sleep(0.5)  # longer than the hold
+        assert h.of_type("transcript_final") == [] and model.prompts == []
+    run(scenario, model)
+
+
+def test_two_finals_ten_milliseconds_apart_become_one_turn():  # T17
+    model = GatedModel(["Fine."], ["Never."])
+
+    async def scenario(h):
+        await h.say("the scheduler")
+        await asyncio.sleep(0.01)
+        await h.say("uses a lock")
+        await h.answered(1)
+        await asyncio.sleep(0.5)
+        assert [m["text"] for m in h.of_type("transcript_final")] == ["the scheduler uses a lock"]
+        assert len(model.prompts) == 1 and len(h.of_type("done")) == 1
+    run(scenario, model)
+
+
+def test_a_card_click_during_the_hold_wins_over_the_held_words():
+    model = GatedModel(["Never."])
+
+    async def scenario(h):
+        await h.say("q1")  # held for 300 ms
+        h.send_text(json.dumps({"type": "ui_action", "action": "select_slot", "payload": {}}))
+        await h.answered(1)  # the click's turn
+        await asyncio.sleep(0.5)  # longer than the hold
+        assert h.of_type("interrupted") == []  # the held words did not cut the click's turn off
+        assert h.of_type("transcript_final") == [] and model.prompts == []
+    run(scenario, model)
+
+
+def test_the_turn_log_has_the_tokens_groq_reported():
+    from backend.observability.usage import LlmUsage
+    model = GatedModel([f"{FIRST} ", LlmUsage(input_tokens=2500, output_tokens=180, cached_tokens=0, reasoning_tokens=60)])
+
+    async def scenario(h):
+        await h.say("q1")
+        await h.answered(1)
+        assert [m["text"] for m in h.of_type("assistant_text")] == [f"{FIRST} "]  # usage is never sent as text
+    run(scenario, model)
+
+    (r,) = TURN_LOG
+    assert (r["llm_calls"], r["input_tokens"], r["output_tokens"], r["reasoning_tokens"]) == (1, 2500, 180, 60)
