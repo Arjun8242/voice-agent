@@ -7,15 +7,37 @@
 export type Mode = 'recruiter' | 'interview';
 export type PersonaName = 'neutral' | 'strict';
 
-export const MODES: { value: Mode; label: string }[] = [
-  { value: 'recruiter', label: 'Ask about Arjun' },
-  { value: 'interview', label: 'Mock interview' },
+// An interview ends after this long; must match INTERVIEW_MAX_SECONDS in backend/config.py.
+export const INTERVIEW_LIMIT_SECONDS = 900;
+
+/** The interviewers, in the order the arrows cycle them; each is drawn as a character (lib/characters.ts). */
+export const PERSONAS: { name: PersonaName; character: 'sapwa' | 'sheru'; givesHints: boolean }[] = [
+  { name: 'neutral', character: 'sapwa', givesHints: true },
+  { name: 'strict', character: 'sheru', givesHints: false },
 ];
 
-export const PERSONAS: { name: PersonaName; label: string; description: string }[] = [
-  { name: 'neutral', label: 'Neutral', description: 'Calm, gentle nudges, hints when you ask.' },
-  { name: 'strict', label: 'Strict', description: 'Exacting, questions your choices, no hints.' },
+/** The persona next to this one, going forward (step 1) or back (step -1), wrapping around. */
+export function stepPersona(current: PersonaName, step: 1 | -1): PersonaName {
+  const index = PERSONAS.findIndex((p) => p.name === current);
+  return PERSONAS[(index + step + PERSONAS.length) % PERSONAS.length].name;
+}
+
+/** The stage chips on the talk screen, in interview order; kind matches backend/interview/plan.py STAGES. */
+export const STAGE_CHIPS: { kind: string; label: string }[] = [
+  { kind: 'intro', label: 'intro' },
+  { kind: 'deep_dive', label: 'deep dive' },
+  { kind: 'technical', label: 'technical' },
+  { kind: 'behavioral', label: 'behavioral' },
+  { kind: 'achievement', label: 'flex' },
+  { kind: 'wrap', label: 'wrap' },
 ];
+
+/** How a chip looks for the live stage (the server's interview_stage): done before it, now on it. */
+export function chipState(chipIndex: number, liveStage: string | null): 'done' | 'now' | 'todo' {
+  const live = STAGE_CHIPS.findIndex((chip) => chip.kind === liveStage);
+  if (live < 0 || chipIndex > live) return 'todo';
+  return chipIndex === live ? 'now' : 'done';
+}
 
 export function startInterviewMessage(persona: PersonaName): string {
   return JSON.stringify({ type: 'start_interview', persona });

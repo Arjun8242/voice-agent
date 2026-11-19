@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from backend.config import TTS_SPEAKER
-
 Decision = str  # "probe", "example", "challenge", "next", "clarify_back"; the graph enforces the list
 ALL_DECISIONS: tuple[Decision, ...] = ("probe", "example", "challenge", "next", "clarify_back")
 
@@ -61,7 +59,8 @@ NEUTRAL = Persona(
         "Take your time. Say hint if you'd like one.",
         "Would you like to move on to the next question?",
     ),
-    voice=TTS_SPEAKER,
+    # Sapwa, the gentle master ji: a lighter male voice. The recruiter keeps TTS_SPEAKER.
+    voice="aditya",  # shortcut: Sarvam's docs give no gender or timbre for v3 voices; confirm by listening in the Sarvam playground
 )
 
 STRICT = Persona(
@@ -76,7 +75,7 @@ STRICT = Persona(
     challenge_from_level=1,
     gives_hints=False,
     nudges=(),  # silence is the candidate's to use
-    voice="shubh",  # shortcut: Sarvam's docs give no genders for v3 voices; assumed male, confirm by listening before release
+    voice="shubh",  # Sheru Bhai, the boss: the deeper male voice. Sarvam labels Shubh male; depth not documented, confirm by listening
 )
 
 PERSONAS: dict[str, Persona] = {NEUTRAL.name: NEUTRAL, STRICT.name: STRICT}

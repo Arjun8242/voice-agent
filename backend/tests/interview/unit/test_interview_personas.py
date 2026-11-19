@@ -4,8 +4,21 @@ from __future__ import annotations
 
 import re
 
-from backend.interview.personas import (ALL_DECISIONS, BRIDGES, CLOSING, HINT_DECLINED, INTRO_QUESTION, NEUTRAL, OPENING,
-                                        PERSONAS, SKIP_ACK, STRICT, THANKS, get_persona)
+from backend.config import TTS_SPEAKER
+from backend.interview.personas import (
+    ALL_DECISIONS,
+    BRIDGES,
+    CLOSING,
+    HINT_DECLINED,
+    INTRO_QUESTION,
+    NEUTRAL,
+    OPENING,
+    PERSONAS,
+    SKIP_ACK,
+    STRICT,
+    THANKS,
+    get_persona,
+)
 from backend.pipeline.turn_taking import INTERVIEW_POLICY
 
 # Sarvam's bulbul:v3 speakers, from https://docs.sarvam.ai/api-reference-docs/text-to-speech/convert (2026-11-14).
@@ -30,8 +43,9 @@ def test_strict_follows_the_plans_strict_and_challenging_columns():
     assert "challenge" in STRICT.allowed_decisions and "example" not in STRICT.allowed_decisions
 
 
-def test_strict_speaks_with_a_different_voice_than_neutral():
-    assert STRICT.voice == "shubh" and STRICT.voice != NEUTRAL.voice
+def test_each_interviewer_has_its_own_voice_apart_from_the_recruiter():
+    assert STRICT.voice != NEUTRAL.voice
+    assert TTS_SPEAKER not in {STRICT.voice, NEUTRAL.voice}  # the interviewers never sound like the recruiter
 
 
 def test_every_persona_voice_is_a_bulbul_v3_speaker():

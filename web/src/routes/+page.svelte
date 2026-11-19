@@ -1,418 +1,290 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
-  import { startMic, stopMic } from '$lib/mic';
-  import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone, currentSentenceId } from '$lib/playback';
-  import { KEEP_ACROSS_TURNS, type Card } from '$lib/cards';
-  import ProjectCard from '$lib/components/ProjectCard.svelte';
-  import LinkCard from '$lib/components/LinkCard.svelte';
-  import BookingCard from '$lib/components/BookingCard.svelte';
-  import InterviewControls from '$lib/components/InterviewControls.svelte';
-  import InterviewReport from '$lib/components/InterviewReport.svelte';
-  import {
-    endInterviewMessage, reportStateFrom, startInterviewMessage, type Mode, type PersonaName, type ReportState,
-  } from '$lib/interview';
-  import Mic from '@lucide/svelte/icons/mic';
-  import MicOff from '@lucide/svelte/icons/mic-off';
-  import Volume2 from '@lucide/svelte/icons/volume-2';
-  import Loader from '@lucide/svelte/icons/loader';
+  import Logo from '$lib/components/Logo.svelte';
+  import Character from '$lib/components/Character.svelte';
+  import Hero from '$lib/components/landing/Hero.svelte';
+  import Crew from '$lib/components/landing/Crew.svelte';
+  import { reveal } from '$lib/reveal';
 
-  // ── State ────────────────────────────────────────────────────────────────
-  type Status = 'idle' | 'listening' | 'thinking' | 'speaking';
+  // The landing page (docs/viva-landing.html). Static text only; the voice app is at /app.
+  const MARQUEE = ['no script', 'real follow-ups', 'say "I" not "we"', 'pausing is allowed', 'numbers > adjectives',
+    'feedback on every answer', "it's giving STAR method", 'deleted after'];
 
-  let status = $state<Status>('idle');
-  // Whether the server is still waiting for the visitor to finish (sent as turn_state, never tied to a turn).
-  let turnState = $state<'speaking' | 'holding' | 'thinking' | 'idle'>('idle');
-  let partialText = $state('');
-  let finalText = $state('');
-  let assistantText = $state('');
-  let cards = $state<Card[]>([]);
-  // Turns up to this id were interrupted; the server tags every message of a turn with turnId.
-  let cancelledTurn = 0;
-  // Turn whose answer the server has finished sending; its audio may still be playing here.
-  let doneTurn = 0;
-  let errorMsg = $state('');
-  let metrics = $state<{ ttfaMs?: number; ragMs?: number; llmTtftMs?: number; totalMs?: number }>({});
+  const STEPS = [
+    { title: 'drop your résumé', text: "Upload a PDF. Paste the job description if you have one. viva builds a plan from what's actually on your résumé, plus the gaps against the role.", example: '"we\'ll cover your internship, Beacon, and Node.js / Postgres"' },
+    { title: 'talk it out', text: 'A real voice conversation. Interrupt, pause to think, ask for a hint, skip. Every follow-up is written from your last answer.', example: '"why five retries? what if it\'s a bug, not a timeout?"' },
+    { title: 'get the receipts', text: 'A report for every question: your transcript, what a strong answer covers, what you hit, what you missed, and one thing to fix.', example: 'deep dive: strong · behavioral: needs a result' },
+  ];
 
-  let ws: WebSocket | null = null;
-  let audioEl: HTMLAudioElement;
-  let micActive = $state(false);
-  let mode = $state<Mode>('recruiter');
-  let persona = $state<PersonaName>('neutral');
-  let interviewStarted = $state(false);
-  let interviewEnded = $state(false);
-  let reportState = $state<ReportState | null>(null);
+  const STOPS = [
+    { name: 'intro', count: '1 question', text: 'walk me through your background' },
+    { name: 'deep dive', count: '2–4 questions', text: 'what you did → why → what broke' },
+    { name: 'technical', count: '2–4 questions', text: 'from the job description, gaps first' },
+    { name: 'behavioral', count: '1–2 questions', text: 'STAR, framed around your work' },
+    { name: 'flex', count: '2 questions', text: 'achievements or open source, if you have them' },
+    { name: 'wrap-up', count: 'closing', text: 'and then your report' },
+  ];
 
-  const WS_URL = 'ws://localhost:3001';
+  const FEATURES = [
+    { icon: '⏸', tint: 'var(--color-sun)', title: 'pauses are allowed', text: "Thinking out loud doesn't get you cut off. It waits for you to actually finish." },
+    { icon: '✋', tint: 'var(--color-sky)', title: 'interrupt anytime', text: 'Talk over it and it stops. Say "repeat", "hint" or "skip" whenever you need to.' },
+    { icon: '🎯', tint: 'var(--color-bubblegum)', title: 'grounded questions', text: "It only asks about what's on your résumé and what you said. No made-up claims about you." },
+    { icon: '🗑', tint: 'var(--color-leaf)', title: 'gone after', text: 'Your résumé is used for the session, then deleted. Contact details never reach the AI.' },
+  ];
 
-  // A newer card for the same booking replaces the older ones (form -> summary -> outcome),
-  // and picking a slot retires the slots list.
-  function placeCard(card: Card) {
-    const bookingId = 'booking_id' in card.data ? card.data.booking_id : null;
-    cards = [
-      ...cards.filter((c) =>
-        c.card_id !== card.card_id
-        && !(bookingId && 'booking_id' in c.data && c.data.booking_id === bookingId)
-        && !(card.type === 'booking_form' && c.type === 'slots')),
-      card,
-    ];
-  }
-
-  // A click on a booking card runs as a turn of its own on the server (graph booking_gate).
-  function sendAction(action: string, payload: Record<string, string>) {
-    if (ws?.readyState !== WebSocket.OPEN) return;
-    assistantText = '';
-    status = 'thinking';
-    ws.send(JSON.stringify({ type: 'ui_action', action, payload }));
-  }
-
-  // ── Interview mode ────────────────────────────────────────────────────────
-  // Start is a click, so the browser lets the interviewer's opening question play.
-  function startInterview() {
-    if (ws?.readyState !== WebSocket.OPEN) return;
-    // toggleMic resets playback before its first await; the server gets start_interview before any audio,
-    // so its STT opens with the interview's longer silence.
-    if (!micActive) void toggleMic();
-    ws.send(startInterviewMessage(persona));
-    interviewStarted = true;
-    status = 'thinking';
-  }
-
-  function endInterview() {
-    if (ws?.readyState !== WebSocket.OPEN) return;
-    ws.send(endInterviewMessage());
-    if (micActive) void toggleMic(); // the mic stops; the closing line still plays
-    interviewEnded = true;
-    // the finished interview stays on this session id: forgetting it lets a reload start a new interview
-    sessionStorage.removeItem('sessionId');
-  }
-
-  // ── WebSocket ─────────────────────────────────────────────────────────────
-  function connectWS() {
-    ws = new WebSocket(WS_URL);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      errorMsg = '';
-      // First message of every page load: resend the id kept from before (empty on a first visit).
-      ws?.send(JSON.stringify({
-        type: 'session_start',
-        sessionId: sessionStorage.getItem('sessionId') ?? '',
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      }));
-    };
-    ws.onerror = () => { errorMsg = 'WebSocket error — is the server running on :3001?'; };
-    ws.onclose = () => {
-      stopMic();
-      micActive = false;
-      status = 'idle';
-    };
-
-    ws.onmessage = (ev) => {
-      // Binary = MP3 audio frame [u32LE sentenceId][mp3 bytes]
-      if (ev.data instanceof ArrayBuffer) {
-        // a late frame of a cut-off answer is dropped and must not flip the badge to speaking
-        if (appendChunk(ev.data) && status === 'thinking') status = 'speaking';
-        return;
-      }
-
-      const msg = JSON.parse(ev.data as string);
-
-      // A cancelled turn's text or card must never show up late.
-      if (msg.turnId !== undefined && msg.turnId <= cancelledTurn) return;
-
-      switch (msg.type) {
-        case 'session':
-          sessionStorage.setItem('sessionId', msg.sessionId);
-          break;
-
-        case 'transcript_partial':
-          partialText = msg.text;
-          break;
-
-        case 'interview_report':
-          // No turnId: it arrives whenever the evaluator finishes, after the interview's last turn.
-          reportState = reportStateFrom(msg.status, msg.report) ?? reportState;
-          break;
-
-        case 'turn_state':
-          turnState = msg.state;
-          break;
-
-        case 'transcript_final':
-          finalText = msg.text;
-          partialText = '';
-          assistantText = "";
-          cards = cards.filter((c) => KEEP_ACROSS_TURNS.has(c.type));
-          resetPlayback(audioEl);
-          status = 'thinking';
-          break;
-
-        case 'assistant_text':
-          assistantText += msg.text;
-          break;
-
-        case 'ui_card':
-          // Same card_id replaces the earlier card instead of showing it twice.
-          placeCard(msg.card);
-          break;
-
-        case 'booking_update':
-          // The calendar call's result. It has no turnId, so it arrives even if the turn was cut off.
-          placeCard({ ...msg.card, data: { ...msg.card.data, text: msg.text } });
-          break;
-
-        case 'metric':
-          if (msg.stage === 'rag_complete') metrics.ragMs = msg.ragLatencyMs;
-          if (msg.stage === 'llm_first_token') metrics.llmTtftMs = msg.ttftMs;
-          break;
-
-        case 'tts_end':
-          if (msg.isFirst && msg.firstAudioLatencyMs) {
-            metrics.ttfaMs = msg.firstAudioLatencyMs;
-          }
-          markSentenceDone(msg.sentenceId);
-          break;
-
-        case 'done':
-          metrics.totalMs = msg.totalMs;
-          doneTurn = msg.turnId;
-          signalDone();
-          // Only return to listening if the mic is still on.
-          status = micActive ? 'listening' : 'idle';
-          break;
-
-        case 'interrupted':
-          // Server superseded current turn due to barge-in
-          if (msg.turnId > cancelledTurn) cancelledTurn = msg.turnId;
-          // Tell the server which sentence was playing, so it keeps only what the visitor heard.
-          ws?.send(JSON.stringify({ type: 'playback_progress', turnId: msg.turnId, lastSentenceId: currentSentenceId() }));
-          resetPlayback(audioEl);
-          assistantText = '';
-          status = micActive ? 'listening' : 'idle';
-          break;
-
-        case 'error':
-          errorMsg = msg.message;
-          micActive = false;
-          stopMic();
-          status = 'idle';
-          break;
-      }
-    };
-  }
-
-  // ── Mic toggle ───────────────────────────────────────────────────────────
-  async function toggleMic() {
-    if (micActive) {
-      stopMic();
-      micActive = false;
-      status = 'idle';
-      return;
-    }
-
-    // Reset state for new conversation session
-    partialText = '';
-    finalText = '';
-    assistantText = '';
-    cards = [];
-    errorMsg = '';
-    metrics = {};
-    resetPlayback(audioEl);
-
-    micActive = true;
-    try {
-      status = 'listening';
-      await startMic((pcm: ArrayBuffer) => {
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(pcm);
-        }
-      });
-      // Stopped while the permission prompt / worklet was still loading.
-      if (!micActive) stopMic();
-    } catch (e: any) {
-      if (!micActive) return;
-      micActive = false;
-      errorMsg = e.message || 'Mic access denied';
-      status = 'idle';
-    }
-  }
-
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
-  onMount(() => {
-    initPlayback(audioEl);
-    // The answer's audio finished: tell the server, so speech from now on is a new question, not a barge-in.
-    audioEl.addEventListener('ended', () => {
-      if (doneTurn && ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'playback_ended', turnId: doneTurn }));
-      }
-    });
-    connectWS();
-  });
-
-  onDestroy(() => {
-    stopMic();
-    ws?.close();
-  });
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const statusLabel: Record<Status, string> = {
-    idle: 'Idle',
-    listening: 'Listening…',
-    thinking: 'Processing…',
-    speaking: 'Speaking…',
-  };
-
-  const statusColor: Record<Status, string> = {
-    idle: 'bg-gray-700 text-gray-300',
-    listening: 'bg-red-500/20 text-red-400 ring-1 ring-red-500/40',
-    thinking: 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/40',
-    speaking: 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40',
-  };
+  const FAQ = [
+    { q: 'What do I need to start?', a: 'A résumé as a PDF and a microphone. A job description is optional. With one, you also get questions on the gaps between your résumé and the role.' },
+    { q: 'How long is an interview?', a: 'About 15 minutes, usually 8 to 13 questions depending on how deep your answers go.' },
+    { q: 'Is it the same questions every time?', a: 'No. The plan comes from your résumé, and every follow-up is written from your last answer. Two people with the same job description get different interviews.' },
+    { q: 'What happens to my résumé?', a: "It's used to plan your session and deleted when the session ends. Contact details like your email and phone number are stripped before anything reaches the AI." },
+    { q: "What's recruiter mode?", a: "The other side of viva: an AI representative that answers recruiters' questions about Arjun, who built this, from his portfolio. It always says it's an AI." },
+  ];
 </script>
 
 <svelte:head>
-  <title>Acme Voice AI</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <title>viva! — mock interviews that talk back</title>
+  <meta name="description" content="A voice mock interviewer that reads your résumé, asks real follow-ups, and gives you feedback on every answer." />
 </svelte:head>
 
-<!-- Hidden audio element for MSE playback -->
-<audio bind:this={audioEl} autoplay class="hidden"></audio>
-
-<main class="min-h-screen bg-[hsl(222,47%,11%)] text-[hsl(210,40%,98%)] flex flex-col items-center justify-center p-6 gap-6">
-
-  <!-- Header -->
-  <div class="text-center">
-    <h1 class="text-3xl font-semibold tracking-tight">Acme Voice AI</h1>
-    <p class="text-sm text-[hsl(215,20%,55%)] mt-1">Low-latency RAG voice assistant</p>
+<nav class="wrap">
+  <div class="nav">
+    <a href="/"><Logo /></a>
+    <div class="links">
+      <a href="#how">how it works</a><a href="#crew">the crew</a><a href="#report">the report</a><a href="#faq">faq</a>
+    </div>
+    <a class="btn btn-sm" href="/app">try it →</a>
   </div>
+</nav>
 
-  <InterviewControls
-    bind:mode
-    bind:persona
-    started={interviewStarted}
-    ended={interviewEnded}
-    onstart={startInterview}
-    onend={endInterview}
-  />
+<div class="wrap"><Hero /></div>
 
-  <!-- Status badge -->
-  <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium transition-colors duration-200 {statusColor[status]}">
-    {#if status === 'listening'}
-      <span class="size-2 rounded-full bg-red-400 animate-pulse"></span>
-    {:else if status === 'thinking'}
-      <Loader size={12} class="animate-spin" />
-    {:else if status === 'speaking'}
-      <Volume2 size={12} />
-    {:else}
-      <span class="size-2 rounded-full bg-gray-500"></span>
-    {/if}
-    {statusLabel[status]}
-  </span>
-
-  {#if turnState === 'thinking'}
-    <p class="text-sm text-[hsl(215,20%,65%)]" role="status">Take your time… I'm listening.</p>
-  {/if}
-
-  <!-- Mic button -->
-  <button
-    onclick={toggleMic}
-    class="relative flex items-center justify-center size-20 rounded-full transition-all duration-200 shadow-lg
-      {status === 'listening'
-        ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30'
-        : 'bg-[hsl(199,89%,48%)] hover:bg-[hsl(199,89%,42%)] shadow-[hsl(199,89%,48%)]/30'
-      }"
-    aria-label={micActive ? 'Stop listening' : 'Start listening'}
-  >
-    {#if micActive}
-      <MicOff size={32} class="text-white" />
-    {:else}
-      <Mic size={32} class="text-white" />
-    {/if}
-    {#if status === 'listening'}
-      <span class="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-20"></span>
-    {/if}
-  </button>
-
-  <!-- Cards -->
-  <div class="w-full max-w-2xl flex flex-col gap-4">
-    {#if reportState}
-      <InterviewReport state={reportState} />
-    {/if}
-
-
-    <!-- Partial transcript -->
-    {#if partialText}
-      <div class="rounded-xl bg-[hsl(222,47%,14%)] border border-[hsl(217,33%,22%)] p-4">
-        <p class="text-xs font-medium text-[hsl(215,20%,55%)] mb-1 uppercase tracking-wider">Partial</p>
-        <p class="text-sm text-[hsl(215,20%,75%)] italic">{partialText}</p>
-      </div>
-    {/if}
-
-    <!-- Final transcript -->
-    {#if finalText}
-      <div class="rounded-xl bg-[hsl(222,47%,14%)] border border-[hsl(217,33%,22%)] p-4">
-        <p class="text-xs font-medium text-[hsl(215,20%,55%)] mb-1 uppercase tracking-wider">You said</p>
-        <p class="text-sm">{finalText}</p>
-      </div>
-    {/if}
-
-    <!-- Assistant response -->
-    {#if assistantText}
-      <div class="rounded-xl bg-[hsl(222,47%,14%)] border border-[hsl(199,89%,48%)]/30 p-4">
-        <p class="text-xs font-medium text-[hsl(199,89%,48%)] mb-1 uppercase tracking-wider">Assistant</p>
-        <p class="text-sm leading-relaxed">{assistantText}</p>
-      </div>
-    {/if}
-
-    <!-- Cards from tools (project detail, links) and booking -->
-    {#each cards as card (card.card_id)}
-      {#if card.type === 'project_detail'}
-        <ProjectCard data={card.data} />
-      {:else if card.type === 'link'}
-        <LinkCard data={card.data} />
-      {:else}
-        <BookingCard {card} onAction={sendAction} />
-      {/if}
+<div class="marquee" aria-hidden="true">
+  <div class="track">
+    {#each [0, 1, 2] as copy (copy)}
+      {#each MARQUEE as item (item)}<span>{item}</span><span class="star">✦</span>{/each}
     {/each}
-
-    <!-- Error -->
-    {#if errorMsg}
-      <div class="rounded-xl bg-red-500/10 border border-red-500/30 p-4">
-        <p class="text-xs font-medium text-red-400 mb-1 uppercase tracking-wider">Error</p>
-        <p class="text-sm text-red-300">{errorMsg}</p>
-      </div>
-    {/if}
-
-    <!-- Metrics -->
-    {#if metrics.ttfaMs !== undefined || metrics.ragMs !== undefined}
-      <div class="rounded-xl bg-[hsl(222,47%,14%)] border border-[hsl(217,33%,22%)] p-4">
-        <p class="text-xs font-medium text-[hsl(215,20%,55%)] mb-3 uppercase tracking-wider">Latency</p>
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {#if metrics.ragMs !== undefined}
-            {@render Metric({ label: 'RAG', value: `${metrics.ragMs}ms` })}
-          {/if}
-          {#if metrics.llmTtftMs !== undefined}
-            {@render Metric({ label: 'LLM TTFT', value: `${metrics.llmTtftMs}ms` })}
-          {/if}
-          {#if metrics.ttfaMs !== undefined}
-            {@render Metric({ label: 'First Audio', value: `${metrics.ttfaMs}ms`, highlight: true })}
-          {/if}
-          {#if metrics.totalMs !== undefined}
-            {@render Metric({ label: 'Total', value: `${metrics.totalMs}ms` })}
-          {/if}
-        </div>
-      </div>
-    {/if}
-
   </div>
+</div>
 
-</main>
-
-<!-- Inline sub-component for metric tiles -->
-{#snippet Metric({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean })}
-  <div class="flex flex-col items-center rounded-lg bg-[hsl(217,33%,17%)] p-3 gap-1">
-    <span class="text-[10px] font-medium text-[hsl(215,20%,55%)] uppercase tracking-wider">{label}</span>
-    <span class="text-base font-semibold {highlight ? 'text-[hsl(199,89%,48%)]' : ''}">{value}</span>
+<section class="wrap" id="how">
+  <div class="sec-head" use:reveal>
+    <h2>how it<br /><span class="hl">works</span></h2>
+    <p>Three steps. No forms to fill in, no GitHub to connect. Just your résumé and your voice.</p>
   </div>
-{/snippet}
+  <div class="steps">
+    {#each STEPS as step, i (step.title)}
+      <div class="step" use:reveal>
+        <div class="num">{i + 1}</div>
+        <h3>{step.title}</h3>
+        <p>{step.text}</p>
+        <div class="mini">{step.example}</div>
+      </div>
+    {/each}
+  </div>
+</section>
+
+<section class="wrap" id="crew">
+  <div class="sec-head" use:reveal>
+    <h2>meet the<br /><span class="hl">crew</span></h2>
+    <p>Pick who interviews you. Same questions, very different energy.</p>
+  </div>
+  <Crew />
+</section>
+
+<section class="wrap">
+  <div class="sec-head" use:reveal>
+    <h2>a real interview<br /><span class="hl">shape</span></h2>
+    <p>Not five random questions. Stages in a fixed order, with a minimum and maximum in each, so it never rushes and never drags.</p>
+  </div>
+  <div class="map" use:reveal>
+    <div class="lane">
+      {#each STOPS as stop, i (stop.name)}
+        <div class="stop"><div class="dot">{i + 1}</div><h4>{stop.name}</h4><div class="q">{stop.count}</div><p>{stop.text}</p></div>
+      {/each}
+    </div>
+    <div class="map-foot">
+      <span class="chip">follow-ups climb: explain → justify → stress-test</span>
+      <span class="chip">"I don't know" moves on, no penalty</span>
+      <span class="chip">time is shared so every stage gets its turn</span>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" id="report">
+  <div class="report">
+    <div use:reveal>
+      <h2>feedback,<br />not a <span class="hl">vibe check</span></h2>
+      <ul>
+        <li><b>✓</b>Every question, with your own words next to it, so you can see exactly what was graded.</li>
+        <li><b>✦</b>What a strong answer covers, and which of those points you actually hit.</li>
+        <li><b>!</b>Plain bands, strong / ok / weak, instead of fake-precise scores out of 10.</li>
+        <li><b>?</b>Words the speech-to-text may have mis-heard are listed and never held against you.</li>
+      </ul>
+    </div>
+    <div class="sheet" use:reveal>
+      <div class="sheet-top"><h4>your report</h4><span class="chip">sample</span></div>
+      <div class="bands">
+        <span class="band strong">deep dive · strong</span>
+        <span class="band ok">technical · ok</span>
+        <span class="band weak">behavioral · weak</span>
+      </div>
+      <div class="qa">
+        <div class="qq">Q: What happens to a job that fails because of a bug, not a timeout?</div>
+        <div class="qa-a">"It keeps failing, so after the retries it lands in the dead-letter queue and we alert on it."</div>
+        <div class="row"><i>✅</i>named the dead-letter queue as the end state</div>
+        <div class="row"><i>✅</i>mentioned alerting</div>
+        <div class="row"><i>❌</i>didn't separate retryable from non-retryable errors</div>
+        <div class="heard">heard "dead letter cue" → read as dead-letter queue</div>
+        <div class="fix">fix: say how you'd stop retrying a bug early instead of burning all five attempts.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="sec-head" use:reveal><h2>small things,<br /><span class="hl">done right</span></h2></div>
+  <div class="feats">
+    {#each FEATURES as feature (feature.title)}
+      <div class="feat" use:reveal>
+        <div class="ic" style="background: {feature.tint}" aria-hidden="true">{feature.icon}</div>
+        <h3>{feature.title}</h3>
+        <p>{feature.text}</p>
+      </div>
+    {/each}
+  </div>
+</section>
+
+<section class="wrap" id="faq">
+  <div class="sec-head" use:reveal><h2>questions,<br /><span class="hl">answered</span></h2></div>
+  <div class="faq">
+    {#each FAQ as item (item.q)}
+      <details use:reveal><summary>{item.q}</summary><p>{item.a}</p></details>
+    {/each}
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="final" use:reveal>
+    <div>
+      <h2>ready to get<br />grilled?</h2>
+      <p>15 minutes with Sapwa or Sheru Bhai. Bring your résumé and your voice.</p>
+      <a class="btn" href="/app">start a mock interview →</a>
+    </div>
+    <Character kind="sapwa" phase="idle" followPointer class="final-art" />
+  </div>
+  <footer>
+    <Logo size={22} />
+    <span>built by Arjun · a voice agent project</span>
+    <div class="links"><a href="#how">how it works</a><a href="#faq">faq</a><a href="/app">try it</a></div>
+  </footer>
+</div>
+
+<style>
+  :global(html) { scroll-behavior: smooth; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { width: min(1180px, calc(100% - 40px)); margin: 0 auto; }
+
+  nav { position: sticky; top: 14px; z-index: 20; margin-top: 14px; }
+  .nav { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 3px solid var(--color-ink); border-radius: 22px; padding: 10px 12px 10px 20px; box-shadow: 5px 5px 0 var(--color-ink); }
+  .links { display: flex; gap: 6px; }
+  .links a { font-weight: 700; font-size: 15px; padding: 8px 12px; border-radius: 12px; }
+  .links a:hover { background: var(--color-cream); }
+
+  .marquee { border-block: 3px solid var(--color-ink); background: var(--color-ink); color: var(--color-sun); overflow: hidden; white-space: nowrap; transform: rotate(-1.2deg); margin: 10px -20px 0; }
+  .track { display: inline-block; padding: 14px 0; font-weight: 800; font-size: 22px; animation: tick 30s linear infinite; will-change: transform; }
+  .track span { margin: 0 22px; }
+  .track .star { color: var(--color-bubblegum); }
+  @keyframes tick { to { transform: translateX(-33.33%); } }
+
+  section { padding: 100px 0 20px; }
+  .sec-head { display: flex; align-items: end; justify-content: space-between; gap: 20px; margin-bottom: 36px; flex-wrap: wrap; }
+  h2 { font-size: clamp(40px, 5vw, 66px); line-height: .95; letter-spacing: -.05em; margin: 0; font-weight: 800; }
+  .hl { background: var(--color-sun); border: 3px solid var(--color-ink); border-radius: 14px; padding: 0 10px; display: inline-block; transform: rotate(-2deg); }
+  .sec-head p { max-width: 420px; font-size: 18px; line-height: 1.45; font-weight: 500; color: #444; margin: 0; }
+  .sec-head p, .report ul, footer { background: var(--color-cream); border-radius: 12px; box-shadow: 0 0 0 10px var(--color-cream); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .step { background: #fff; border: 3px solid var(--color-ink); border-radius: 26px; padding: 26px; box-shadow: 7px 7px 0 var(--color-ink); }
+  .step:nth-child(2) { transform: translateY(26px) rotate(1deg); }
+  .step:nth-child(3) { transform: rotate(-1deg); }
+  .num { width: 54px; height: 54px; border-radius: 50%; border: 3px solid var(--color-ink); display: grid; place-items: center; font-weight: 800; font-size: 26px; background: var(--color-sun); margin-bottom: 18px; }
+  .step:nth-child(2) .num { background: var(--color-sky); }
+  .step:nth-child(3) .num { background: var(--color-bubblegum); }
+  .step h3 { font-size: 28px; letter-spacing: -.03em; margin: 0 0 10px; }
+  .step p { margin: 0; font-size: 16.5px; line-height: 1.5; color: #444; font-weight: 500; }
+  .mini { margin-top: 18px; border: 2.5px dashed var(--color-ink); border-radius: 16px; padding: 12px; font-weight: 700; font-size: 14px; background: var(--color-cream); }
+
+  .map { background: #fff; border: 3px solid var(--color-ink); border-radius: 30px; padding: 30px; box-shadow: 8px 8px 0 var(--color-ink); }
+  .lane { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; position: relative; }
+  .lane::before { content: ""; position: absolute; left: 6%; right: 6%; top: 34px; border-top: 3px dashed var(--color-ink); }
+  .stop { position: relative; text-align: center; }
+  .dot { width: 68px; height: 68px; margin: 0 auto; border-radius: 50%; border: 3px solid var(--color-ink); display: grid; place-items: center; font-weight: 800; font-size: 26px; background: #fff; position: relative; box-shadow: 4px 4px 0 var(--color-ink); }
+  .stop:nth-child(1) .dot { background: var(--color-sun); } .stop:nth-child(2) .dot { background: var(--color-lilac); }
+  .stop:nth-child(3) .dot { background: var(--color-sky); } .stop:nth-child(4) .dot { background: var(--color-bubblegum); }
+  .stop:nth-child(5) .dot { background: var(--color-leaf); } .stop:nth-child(6) .dot { background: var(--color-tangerine); }
+  .stop h4 { margin: 14px 0 4px; font-size: 19px; letter-spacing: -.02em; }
+  .stop .q { font-weight: 700; font-size: 13px; }
+  .stop p { margin: 6px 0 0; font-size: 14px; line-height: 1.4; color: #555; font-weight: 500; }
+  .map-foot { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; padding-top: 20px; border-top: 2.5px solid var(--color-ink); }
+  .map-foot .chip { background: var(--color-cream); }
+
+  .report { display: grid; grid-template-columns: 1fr 1.1fr; gap: 30px; align-items: center; }
+  .report ul { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 14px; }
+  .report li { display: flex; gap: 14px; align-items: flex-start; font-size: 17px; line-height: 1.45; font-weight: 500; }
+  .report li b { flex: none; width: 34px; height: 34px; border-radius: 10px; border: 2.5px solid var(--color-ink); display: grid; place-items: center; background: var(--color-sun); font-size: 16px; }
+  .sheet { background: #fff; border: 3px solid var(--color-ink); border-radius: 28px; padding: 24px; box-shadow: 9px 9px 0 var(--color-ink); transform: rotate(1.5deg); }
+  .sheet-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .sheet-top h4 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
+  .bands { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  .band { border: 2.5px solid var(--color-ink); border-radius: 999px; padding: 4px 11px; font-weight: 700; font-size: 13px; }
+  .strong { background: var(--color-leaf); } .ok { background: var(--color-sun); } .weak { background: var(--color-bubblegum); }
+  .qa { border: 2.5px solid var(--color-ink); border-radius: 18px; padding: 16px; background: var(--color-cream); }
+  .qq { font-weight: 800; font-size: 16px; margin-bottom: 8px; }
+  .qa-a { font-size: 14.5px; line-height: 1.45; color: #444; font-style: italic; margin-bottom: 12px; }
+  .row { display: flex; gap: 8px; font-size: 14.5px; font-weight: 600; margin-top: 6px; line-height: 1.35; }
+  .row i { font-style: normal; width: 22px; flex: none; }
+  .heard { margin-top: 12px; font-size: 13px; font-weight: 600; background: #fff; border: 2px dashed var(--color-ink); border-radius: 12px; padding: 8px 10px; }
+  .fix { margin-top: 12px; font-size: 14px; font-weight: 700; background: var(--color-sky); border: 2.5px solid var(--color-ink); border-radius: 12px; padding: 9px 12px; }
+
+  .feats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .feat { background: #fff; border: 3px solid var(--color-ink); border-radius: 24px; padding: 22px; box-shadow: 6px 6px 0 var(--color-ink); }
+  .ic { width: 50px; height: 50px; border-radius: 14px; border: 2.5px solid var(--color-ink); display: grid; place-items: center; font-size: 24px; margin-bottom: 14px; }
+  .feat h3 { margin: 0 0 8px; font-size: 21px; letter-spacing: -.02em; line-height: 1.1; }
+  .feat p { margin: 0; font-size: 15px; line-height: 1.45; color: #444; font-weight: 500; }
+
+  .faq { display: grid; gap: 14px; max-width: 860px; }
+  details { background: #fff; border: 3px solid var(--color-ink); border-radius: 20px; box-shadow: 5px 5px 0 var(--color-ink); }
+  summary { list-style: none; cursor: pointer; padding: 18px 22px; font-weight: 800; font-size: 20px; letter-spacing: -.02em; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; width: 34px; height: 34px; flex: none; border-radius: 50%; border: 2.5px solid var(--color-ink); display: grid; place-items: center; font-size: 22px; background: var(--color-sun); transition: transform .25s; }
+  details[open] summary::after { transform: rotate(45deg); background: var(--color-bubblegum); }
+  details p { margin: 0; padding: 0 22px 20px; font-size: 16.5px; line-height: 1.5; color: #444; font-weight: 500; }
+
+  .final { margin: 90px 0 40px; background: var(--color-sun); border: 3px solid var(--color-ink); border-radius: 36px; box-shadow: 10px 10px 0 var(--color-ink); padding: 56px; display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; align-items: center; overflow: hidden; }
+  .final h2 { font-size: clamp(44px, 5.6vw, 78px); }
+  .final p { font-size: 19px; font-weight: 500; margin: 18px 0 26px; max-width: 520px; }
+  .final .btn { background: var(--color-ink); color: #fff; box-shadow: 6px 6px 0 #fff; }
+  .final :global(.final-art) { width: 100%; height: 280px; }
+
+  footer { padding: 26px 0 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-weight: 600; font-size: 14px; color: #555; }
+  footer .links a { font-size: 14px; }
+
+  @media (max-width: 980px) {
+    .links { display: none; }
+    footer .links { display: flex; }
+    .report, .final { grid-template-columns: 1fr; }
+    .steps { grid-template-columns: 1fr; }
+    .step:nth-child(2), .step:nth-child(3) { transform: none; }
+    .feats { grid-template-columns: 1fr 1fr; }
+    .lane { grid-template-columns: repeat(3, 1fr); row-gap: 30px; }
+    .lane::before { display: none; }
+    .final { padding: 34px; }
+  }
+  @media (max-width: 560px) {
+    .final { padding: 26px 22px; border-radius: 28px; }
+    .final :global(.final-art) { height: 200px; }
+    .map { padding: 22px 16px; }
+    .sheet { padding: 18px; transform: none; }
+    .feats { grid-template-columns: 1fr; }
+    .lane { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>

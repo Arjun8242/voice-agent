@@ -41,7 +41,7 @@ The design is written up in [docs/langgraph-design.md](docs/langgraph-design.md)
 
 ## Interview mode
 
-Pick **Mock interview** in the page, choose an interviewer and press **Start interview**. The interview runs in stages: an intro, then deep-dives, technical, behavioural and achievement questions when the plan has them, and you answer out loud. Each session's plan is built from the candidate's resume PDF and an optional job description, uploaded before the interview starts ([v2 design](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md)). The page's upload step is not built yet: for now, upload with `POST /interview/upload` (below).
+Open `/app` (the landing page at `/` links to it). Stay on **interviewer**, press **upload résumé** and pick your resume (PDF), add a job description if you have one, press **analyse résumé** and check the one-line preview of what the interview will cover, then pick an interviewer with the arrows (Sapwa, calm and gives hints, or Sheru Bhai, strict) and press **let's go**. The stage chips above the interviewer follow the interview: after each interview turn the server sends `interview_stage` (the current topic's stage, or `wrap` once the closing line is spoken; no `turnId`, like `interview_report`). The interview runs in stages: an intro, then deep-dives, technical, behavioural and achievement questions when the plan has them, and you answer out loud. Each session's plan is built from the candidate's resume PDF and an optional job description, uploaded before the interview starts ([v2 design](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md)).
 
 ```
 START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response -> END
@@ -59,9 +59,10 @@ START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response
 - **Two interviewers** (`backend/interview/personas.py`): *neutral* (calm, hints on request, gentle nudges after 15 s and 45 s of silence) and *strict* (exacting, challenges choices, no hints or nudges, a different voice).
 - **Turn-taking.** `backend/pipeline/turn_taking.py` holds each final transcript before taking the turn: 1.2 s after a complete sentence, 2.5 s after a trailing "and" or "um", 20 s after "let me think". Any new speech cancels the wait. Recruiter mode uses the same controller with shorter holds (300 ms and 800 ms). While the agent's audio plays, only words cut it off (`backend/pipeline/barge_in.py`): an "okay", "mm" or a cough does not.
 - **Report.** When the interview ends, one more Groq call reviews each answer (not the intro) against its stage's rubric and gives a band, strong, ok or weak, instead of a score. It names the topic's key points the answer covered and missed by number, so the report shows the framework's own words, never the model's; plus one improvement per answer and three strengths and three things to work on overall (`backend/interview/evaluate.py`, `backend/prompts/evaluator.md`). Code adds the question and transcript, the answer framework, a JD-gap flag, a band per stage, and every term speech recognition got wrong, which never counts against the answer (`backend/interview/report.py`).
+- **Less Sarvam spend.** Every fixed line the interviewer speaks (opening, intro, bridges, nudges, closing and the five behavioral questions) is synthesised once per voice and then played from `data/tts_cache/` (`backend/pipeline/fixed_audio.py`); nothing the model writes or the candidate says is stored. When the interview ends, the server closes the speech-to-text socket, which is billed per open minute, and drops any audio still arriving; the page stops the mic.
 - **Try it in text first.** `POST /internal/turn` with `"mode": "interview"` runs the same interviewer with no speech cost (see [Observability](#observability)).
 
-The audit and design are in [docs/interviewer-mode-plan.md](docs/interviewer-mode-plan.md); 
+The design and its task plan are in [docs/Interviewer Mode v2 — Resume + JD Interview Design.md](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md).
 
 ## Stack
 
@@ -130,7 +131,7 @@ npm install
 npm run dev
 ```
 
-Open the address Vite prints and allow the microphone. The page connects to `ws://localhost:3001` (set in `web/src/routes/+page.svelte`).
+Open the address Vite prints: `/` is the landing page and `/app` is the talk screen. Allow the microphone there. The talk screen connects to `ws://localhost:3001` (set in `web/src/routes/app/+page.svelte`). The UI follows the designs in `docs/viva-landing.html` and `docs/viva-design-blobs.html`; the characters are drawn in `web/src/lib/characters.ts` and animated by `Character.svelte`, which pauses off screen, in hidden tabs and under reduced motion.
 
 `.env.example` lists every setting. By default `CALENDAR_BACKEND=fake`, so bookings are kept in memory and no invite is sent. To use your real calendar, set `CALENDAR_BACKEND=google` and provide `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`.
 
@@ -208,7 +209,7 @@ The upload costs one Groq call and no Sarvam. The plan is kept in memory until t
 - Evals use the fake calendar, so the Google adapter is covered only by mocked unit tests.
 - Interview mode has not yet been run against real Groq and Sarvam end to end. Its hold times, nudge times and STT silence (`STT_INTERVIEW_SILENCE_MS`) are starting guesses from the plan, not measurements.
 - The turn-taking word lists are English with a few Hinglish fillers. A phrase they miss is treated as a normal answer.
-- The strict interviewer's voice (`shubh`) is assumed to be male: Sarvam's docs do not give voice genders.
+- Both interviewers have male voices set in `backend/interview/personas.py`: Sapwa (neutral) `aditya`, meant to be the lighter one, and Sheru Bhai (strict) `shubh`, meant to be the deeper one. Sarvam labels Shubh male but documents no gender or depth for the other voices, so confirm both by ear in the Sarvam playground and swap the name if needed. A new voice gets its own folder in `data/tts_cache/`.
 - The interview report is not yet calibrated against hand-scored answers, and interviews have no eval suite yet.
 - If you speak before pressing Start, speech-to-text keeps the recruiter's shorter end-of-speech silence until the page is reloaded.
 

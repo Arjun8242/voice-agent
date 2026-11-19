@@ -76,3 +76,13 @@ def plan_preview(topics: list[Topic]) -> str:
         return "We'll talk about your background."
     listed = titles[0] if len(titles) == 1 else f"{', '.join(titles[:-1])} and {titles[-1]}"
     return f"We'll cover {listed}."
+
+
+def live_stage(topics: list[Topic], topic_index: int, finished: bool) -> str | None:
+    """The stage the candidate is in, for the page's stage chips: the current topic's kind, "wrap" once
+    the closing line was spoken, or None before there is a plan."""
+    if finished:
+        return "wrap"
+    if not topics:
+        return None
+    return topics[min(topic_index, len(topics) - 1)]["kind"]

@@ -53,13 +53,13 @@ class FakeWebSocket:
 
 class FakeStt:
     def __init__(self, handlers):
-        self.handlers = handlers
+        self.handlers, self.audio, self.closed = handlers, [], 0
 
     def send_audio(self, data):
-        pass
+        self.audio.append(data)
 
     def close(self):
-        pass
+        self.closed += 1
 
 
 class GatedModel:

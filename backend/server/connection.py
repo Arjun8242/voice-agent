@@ -12,6 +12,7 @@ from fastapi import WebSocket
 import httpx
 
 from backend.interview.personas import NEUTRAL, Persona, get_persona
+from backend.interview.plan import live_stage
 from backend.observability.timings import append_turn_log
 from backend.pipeline.turn_taking import INTERVIEW_POLICY, TurnTaker
 from backend.providers.stt import stt_url
@@ -96,6 +97,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     report_task: asyncio.Task | None = None  # the report, started once when the interview finishes
     persona: Persona = NEUTRAL  # the interviewer's rules and voice, while interviewing
     plans = interview_plans if interview_plans is not None else {}
+    listening = True  # False once an interview has finished: the STT socket is closed and stays closed
 
     # A new event is created for each turn so a stale event from a cancelled turn
     # cannot abort a newer one.
@@ -180,6 +182,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
                              persona=persona.name if interviewing else "", speaker=persona.voice if interviewing else "",
                              nudge=nudge, plan=plans.get(session_id) if interviewing else None)
             if interviewing:
+                await send_stage()
                 await start_report_if_finished()
         except Exception as err:  # CancelledError is not an Exception: a barge-in ends the task as cancelled
             print(f"[voiceTurn] {err}")
@@ -211,17 +214,34 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     # The report — owned by the connection, like booking calls, so a barge-in cannot cancel it.
     # interview_report has no turnId: the browser never drops it as stale.
     # -------------------------------------------------------------------------
+    async def send_stage() -> None:
+        """After an interview turn: tell the page which stage is live, for its stage chips. No turnId, like the
+        report: a cut-off turn never gets here (the barge-in cancels it), so what arrives is always current."""
+        values = (await interview_graph.aget_state({"configurable": {"thread_id": session_id}})).values
+        stage = live_stage(list(values.get("topics") or []), values.get("topic_index", 0), bool(values.get("finished")))
+        if stage is not None:
+            await send("interview_stage", {"stage": stage})
+
     async def start_report_if_finished() -> None:
         """After an interview turn: if the graph says the interview ended (End, time cap, last topic or a
-        spoken "end"), write the report from its recorded answers. Only once per connection."""
+        spoken "end"), stop listening and write the report from its recorded answers. Only once per connection."""
         nonlocal report_task
-        if report_task is not None or evaluator is None:
+        if report_task is not None or not listening:
             return
         values = (await interview_graph.aget_state({"configurable": {"thread_id": session_id}})).values
         if not values.get("finished") or report_task is not None:  # re-checked: another turn may have started it
             return
+        stop_listening()
+        if evaluator is None:
+            return
         answers, topics = list(values.get("answers") or []), list(values.get("topics") or [])
         report_task = asyncio.get_running_loop().create_task(send_report(answers, topics))
+
+    def stop_listening() -> None:
+        """The interview is over: close STT (billed per open minute) and ignore any audio still arriving."""
+        nonlocal listening
+        listening = False
+        stt.close()
 
     async def send_report(answers: list, topics: list) -> None:
         await send("interview_report", {"status": "pending"})
@@ -367,8 +387,10 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             msg = await ws.receive()
 
             if "bytes" in msg and msg["bytes"]:
-                # Raw PCM from AudioWorklet → STT handles base64-encoding + queuing
-                stt.send_audio(msg["bytes"])
+                # Raw PCM from AudioWorklet → STT handles base64-encoding + queuing. send_audio would reopen
+                # a closed socket, so audio after the interview's end is dropped here.
+                if listening:
+                    stt.send_audio(msg["bytes"])
             elif msg.get("text"):
                 on_client_message(msg["text"])
 

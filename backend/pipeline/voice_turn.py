@@ -35,6 +35,7 @@ except (ImportError, ModuleNotFoundError):
     from backend.providers.tts import stream_tts
 
 from backend.observability.usage import add_usage, empty_totals
+from backend.pipeline import fixed_audio
 
 Send = Callable[..., Awaitable[None]]
 
@@ -50,20 +51,29 @@ async def speak_sentence(
     tts_client: httpx.AsyncClient,
     speaker: str = "",
 ) -> None:
-    """TTS one sentence in the given voice ("" = the default). Always fires tts_end in finally."""
+    """TTS one sentence in the given voice ("" = the default). Always fires tts_end in finally.
+    A fixed interviewer line plays from its recording when there is one (pipeline/fixed_audio.py)."""
     id_buf = struct.pack("<I", sentence_id)
     produced_first = False
+    heard: list[bytes] = []
 
     try:
         async def on_chunk(mp3: bytes) -> None:
             nonlocal produced_first
+            heard.append(mp3)
             await send(id_buf + mp3)
             if first_audio["sent_ms"] is None:
                 first_audio["sent_ms"] = elapsed()
                 produced_first = True
                 on_audio()
 
+        recording = fixed_audio.recorded_audio(text, speaker)
+        if recording is not None:
+            await on_chunk(recording)
+            return
         await stream_tts(text, interrupt_event, on_chunk, tts_client, speaker)
+        if not interrupt_event.is_set():
+            fixed_audio.save_audio(text, speaker, b"".join(heard))
 
     except asyncio.CancelledError:
         raise

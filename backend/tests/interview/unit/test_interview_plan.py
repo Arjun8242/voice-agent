@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from backend.interview.plan import STAGES, intro_topic, make_topic, order_plan, plan_preview
+from backend.interview.plan import (
+    STAGES,
+    intro_topic,
+    live_stage,
+    make_topic,
+    order_plan,
+    plan_preview,
+)
 
 
 def test_every_topic_carries_its_stages_budget():
@@ -21,3 +28,11 @@ def test_the_preview_names_every_topic_after_the_intro():
     topics = [intro_topic(), make_topic("deep_dive", "acme", "your work at Acme", "", "Q?"),
               make_topic("technical", "java", "Java", "", "Q?"), make_topic("behavioral", "own", "teamwork", "", "Q?")]
     assert plan_preview(topics) == "We'll cover your work at Acme, Java and teamwork."
+
+
+def test_the_live_stage_is_the_current_topics_stage_then_wrap_once_finished():
+    topics = order_plan([intro_topic(), make_topic("technical", "sql", "SQL", "Postgres", "How do indexes work?")])
+    assert live_stage(topics, 0, finished=False) == "intro"
+    assert live_stage(topics, 1, finished=False) == "technical"
+    assert live_stage(topics, 1, finished=True) == "wrap"
+    assert live_stage([], 0, finished=False) is None  # no plan yet: nothing to show

@@ -344,9 +344,9 @@ Done when: a scripted interview produces a report with an entry for every graded
 
 **Phase 5 — Sarvam reductions and UI**
 
-- [ ] 5.1 Pre-record every fixed line once; play from disk.
-- [ ] 5.2 Close the STT stream when the closing line starts (check current behaviour first).
-- [ ] 5.3 Upload UI: PDF picker, JD box, plan preview, persona choice.
+- [x] 5.1 Pre-record every fixed line once; play from disk.
+- [x] 5.2 Close the STT stream when the closing line starts (check current behaviour first).
+- [x] 5.3 Upload UI: PDF picker, JD box, plan preview, persona choice.
 - [ ] 5.4 One end-to-end voice run to confirm the flow.
 
 **Phase 6 — Evals**

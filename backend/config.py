@@ -45,6 +45,8 @@ TTS_LANGUAGE = "en-IN"
 TTS_MODEL = "bulbul:v3"
 TTS_SPEAKER = "suhani"
 TTS_OUTPUT_FORMAT = "mp3"
+# The interviewer's fixed lines, recorded once per voice (pipeline/fixed_audio.py). Under data/, never committed.
+TTS_CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "tts_cache"
 
 CALENDAR_BACKEND = os.environ.get("CALENDAR_BACKEND", "fake")
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")

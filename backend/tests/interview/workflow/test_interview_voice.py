@@ -8,14 +8,18 @@ import asyncio
 import json
 import sys
 
-from backend.config import TTS_SPEAKER
 from backend.graph.interview.graph import build_interview_graph
-from backend.interview.personas import OPENING
+from backend.interview.personas import OPENING, STRICT
 from backend.interview.plan import make_topic
 from backend.providers.stt import stt_url
-from backend.tests.voice import test_voice_conversation
 from backend.tests.helpers import ScriptedModel
-from backend.tests.voice.test_voice_conversation import TURN_LOG, GatedModel, connection, fake_tts  # noqa: F401 (fake_tts is an autouse fixture)
+from backend.tests.voice import test_voice_conversation
+from backend.tests.voice.test_voice_conversation import (  # noqa: F401 (fake_tts is an autouse fixture)
+    TURN_LOG,
+    GatedModel,
+    connection,
+    fake_tts,
+)
 
 SEED = "What does Beacon do?"
 TOPICS = [make_topic("deep_dive", "beacon", "Beacon", "Beacon takes a Postgres advisory lock.", SEED)]
@@ -74,18 +78,18 @@ def test_the_strict_persona_speaks_with_its_own_voice(monkeypatch):
         start(h, "strict")
         await h.answered(1)
     run(scenario, GatedModel(), interview_graph=graph)
-    assert set(speakers) == {"shubh"}
+    assert set(speakers) == {STRICT.voice}
 
 
 def test_an_unknown_persona_gets_the_neutral_voice(monkeypatch):
     speakers = record_speakers(monkeypatch)
-    graph, model = interviewer()
+    graph, _ = interviewer()
 
     async def scenario(h):
         start(h, "pirate")
         await h.answered(1)
     run(scenario, GatedModel(), interview_graph=graph)
-    assert set(speakers) == {TTS_SPEAKER}
+    assert set(speakers) == {NEUTRAL.voice}
 
 
 def test_recruiter_turns_keep_the_default_voice(monkeypatch):
@@ -171,6 +175,18 @@ def test_interview_turns_are_logged_with_their_mode():
 
 # --- the End button (C2) ---------------------------------------------------------------------
 
+
+def test_each_interview_turn_tells_the_page_which_stage_is_live():
+    graph, _ = interviewer()
+
+    async def scenario(h):
+        start(h)
+        await h.until(lambda: h.of_type("interview_stage"), "the stage after the opening")
+        assert h.of_type("interview_stage")[-1] == {"type": "interview_stage", "stage": "deep_dive"}  # no turnId: never stale
+        end(h)
+        await h.until(lambda: h.of_type("interview_stage")[-1]["stage"] == "wrap", "the wrap stage after the end")
+    run(scenario, GatedModel(), interview_graph=graph)
+
 def end(h) -> None:
     h.send_text(json.dumps({"type": "end_interview"}))
 
@@ -219,8 +235,8 @@ def test_the_end_button_outside_an_interview_does_nothing():
 
 # --- silence nudges (C3) ------------------------------------------------------------------------
 
-from backend.interview.personas import NEUTRAL  # noqa: E402
-from backend.pipeline.turn_taking import TurnPolicy  # noqa: E402
+from backend.interview.personas import NEUTRAL
+from backend.pipeline.turn_taking import TurnPolicy
 
 FAST_INTERVIEW = TurnPolicy(base_hold_ms=100, long_hold_ms=200, think_hold_ms=400, reopen_ms=100, nudge_ms=(300, 600))
 
@@ -310,7 +326,7 @@ def test_recruiter_mode_never_nudges(monkeypatch):
 
 # --- the report (C4) ----------------------------------------------------------------------------
 
-from backend.interview.report import Report  # noqa: E402
+from backend.interview.report import Report
 
 EMPTY_REPORT = Report(reviews=[], stages=[], strengths=["Name the component first."], improvements=[], gaps_touched=[])
 
@@ -434,3 +450,64 @@ def test_leaving_the_page_cancels_a_report_still_being_written():
         await asyncio.sleep(0.05)  # checked here, before asyncio.run would cancel leftover tasks itself
         assert evaluator.cancelled is True
     run(scenario, GatedModel(), interview_graph=graph, evaluator=evaluator)
+
+
+# --- Sarvam savings (phase 5) ----------------------------------------------------------------------
+
+from backend.interview.personas import CLOSING
+from backend.pipeline import fixed_audio
+
+
+def record_tts_texts(monkeypatch) -> list[str]:
+    """Replace the fake TTS with one that records which sentences were sent to Sarvam."""
+    texts: list[str] = []
+
+    async def stream_tts(text, interrupt_event, on_chunk, client, speaker=""):
+        texts.append(text)
+        await on_chunk(b"mp3")
+    monkeypatch.setattr(sys.modules[connection.voice_turn.__module__], "stream_tts", stream_tts)
+    return texts
+
+
+def test_a_fixed_line_is_synthesised_once_then_played_from_disk(monkeypatch):
+    texts = record_tts_texts(monkeypatch)
+
+    async def scenario(h):
+        start(h)
+        await h.answered(1)
+        assert len(h.of_type("tts_end")) >= 2  # the recording is still sent to the browser as audio
+    for _ in range(2):  # two interviews
+        run(scenario, GatedModel(), interview_graph=interviewer()[0])
+    assert texts == [OPENING, SEED, SEED]  # the seed comes from this candidate's resume: never recorded
+    assert len(list(fixed_audio.CACHE_DIR.rglob("*.mp3"))) == 1
+
+
+def test_a_fixed_line_cut_off_mid_synthesis_is_not_recorded(monkeypatch):
+    first_sentence = fixed_audio.sentences_of(CLOSING)[0]
+
+    async def stream_tts(text, interrupt_event, on_chunk, client, speaker=""):
+        await on_chunk(b"half")
+        interrupt_event.set()  # a barge-in
+    monkeypatch.setattr(sys.modules[connection.voice_turn.__module__], "stream_tts", stream_tts)
+
+    async def send(*_):
+        pass
+    asyncio.run(sys.modules[connection.voice_turn.__module__].speak_sentence(send, 1, first_sentence, asyncio.Event(), {"sent_ms": None},
+                                          lambda: 0, lambda: None, None))
+    assert fixed_audio.recorded_audio(first_sentence, "") is None
+
+
+def test_the_end_of_the_interview_closes_stt_and_later_audio_is_dropped():
+    graph, _ = interviewer()
+
+    async def scenario(h):
+        start(h)
+        await h.answered(1)
+        end(h)
+        await h.answered(2)
+        await h.until(lambda: h.stt_holder[0].closed, "STT to close")
+        h.ws.incoming.put_nowait({"type": "websocket.receive", "bytes": b"pcm"})  # the mic is still sending
+        await asyncio.sleep(0.1)
+        assert h.stt_holder[0].audio == []
+    run(scenario, GatedModel(), interview_graph=graph)
+
