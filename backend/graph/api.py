@@ -2,7 +2,8 @@
  
 For evals and manual testing. mode "recruiter" (default) runs the recruiter graph; mode "interview"
 runs the interview graph, so the interviewer can be developed in text with no Sarvam spend. An
-interview request without an answer asks for the opening question. Protected by the INTERNAL_API_KEY environment
+interview request without an answer asks for the opening question; its plan comes from
+POST /interview/upload with the same session_id. Protected by the INTERNAL_API_KEY environment
 variable (sent as the api-key header). If the variable is not set, the
 endpoint is disabled. server/main.py includes this router.
 """
@@ -60,9 +61,9 @@ class TurnRequest(BaseModel):
 INTERVIEW_FIELDS = ("intent", "mode", "decision", "tag_ok", "topic_index", "level", "followups_used", "finished", "answers")
 
 
-async def run_interview_turn(graph, body: TurnRequest, topics: list) -> dict:
+async def run_interview_turn(graph, body: TurnRequest, plan: dict | None) -> dict:
     result = await run_turn(graph, session_id=body.session_id, text=body.answer or "", persona=body.persona,
-                            topics=topics)
+                            plan=plan)
     state = (await graph.aget_state({"configurable": {"thread_id": body.session_id}})).values
     timings = {key: result[key] for key in ("errors", "first_token_ms", "total_ms", "usage")}
     return {"reply": result["reply"], **timings, **{key: state.get(key) for key in INTERVIEW_FIELDS}}
@@ -84,8 +85,8 @@ async def turn(body: TurnRequest, request: Request, API_KEY: str | None = Header
         raise HTTPException(503, "graph is not initialised")
     if body.mode == "interview":
         try:
-            topics = getattr(request.app.state, "interview_topics", [])
-            return await asyncio.wait_for(run_interview_turn(graph, body, topics), TURN_TIMEOUT)
+            plan = getattr(request.app.state, "interview_plans", {}).get(body.session_id)  # from POST /interview/upload
+            return await asyncio.wait_for(run_interview_turn(graph, body, plan), TURN_TIMEOUT)
         except asyncio.TimeoutError:
             raise HTTPException(504, f"turn exceeded {TURN_TIMEOUT}s")
     try:

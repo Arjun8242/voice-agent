@@ -76,7 +76,7 @@ def test_the_recruiter_graph_counts_usage_and_never_speaks_it():
 def test_the_interview_graph_counts_usage_and_never_speaks_it():
     topics = [make_topic("deep_dive", "beacon", "Beacon", "Notes.", "What does Beacon do?")]
     graph = build_interview_graph(ScriptedModel(["[[decision=probe]]\nWhy a lock?", USAGE]))
-    asyncio.run(run_turn(graph, "s1", "", topics=topics))  # the opening: code, no model call
+    asyncio.run(run_turn(graph, "s1", "", plan={"topics": topics}))  # the opening: code, no model call
     result = asyncio.run(run_turn(graph, "s1", "It schedules checks."))
     assert result["reply"] == "Why a lock?" and result["usage"]["input_tokens"] == 2500
 
@@ -84,7 +84,7 @@ def test_the_interview_graph_counts_usage_and_never_speaks_it():
 def test_a_turn_without_a_model_call_reports_zero():
     topics = [make_topic("deep_dive", "beacon", "Beacon", "Notes.", "What does Beacon do?")]
     graph = build_interview_graph(ScriptedModel())
-    result = asyncio.run(run_turn(graph, "s1", "Let's end the interview.", topics=topics))
+    result = asyncio.run(run_turn(graph, "s1", "Let's end the interview.", plan={"topics": topics}))
     assert result["usage"] == empty_totals()
 
 

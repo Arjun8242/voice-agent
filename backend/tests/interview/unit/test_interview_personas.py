@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 from backend.interview.personas import (ALL_DECISIONS, BRIDGES, CLOSING, HINT_DECLINED, INTRO_QUESTION, NEUTRAL, OPENING,
                                         PERSONAS, SKIP_ACK, STRICT, THANKS, get_persona)
 from backend.pipeline.turn_taking import INTERVIEW_POLICY
@@ -36,37 +34,37 @@ def test_strict_speaks_with_a_different_voice_than_neutral():
     assert STRICT.voice == "shubh" and STRICT.voice != NEUTRAL.voice
 
 
-@pytest.mark.parametrize("persona", PERSONAS.values(), ids=lambda p: p.name)
-def test_every_persona_voice_is_a_bulbul_v3_speaker(persona):
-    assert persona.voice in BULBUL_V3_SPEAKERS
+def test_every_persona_voice_is_a_bulbul_v3_speaker():
+    for persona in PERSONAS.values():
+        assert persona.voice in BULBUL_V3_SPEAKERS
 
 
-@pytest.mark.parametrize("persona", PERSONAS.values(), ids=lambda p: p.name)
-def test_every_persona_uses_only_known_decisions_and_can_always_move_on(persona):
-    assert set(persona.allowed_decisions) <= set(ALL_DECISIONS)
-    assert "next" in persona.allowed_decisions  # otherwise a topic could never end except by the cap
-    assert 1 <= persona.challenge_from_level <= 3
+def test_every_persona_uses_only_known_decisions_and_can_always_move_on():
+    for persona in PERSONAS.values():
+        assert set(persona.allowed_decisions) <= set(ALL_DECISIONS)
+        assert "next" in persona.allowed_decisions  # otherwise a topic could never end except by the cap
+        assert 1 <= persona.challenge_from_level <= 3
 
 
-@pytest.mark.parametrize("name, persona", [("neutral", NEUTRAL), ("strict", STRICT)])
-def test_a_known_name_returns_its_persona(name, persona):
-    assert get_persona(name) is persona
+def test_a_known_name_returns_its_persona():
+    for name, persona in [("neutral", NEUTRAL), ("strict", STRICT)]:
+        assert get_persona(name) is persona
 
 
-@pytest.mark.parametrize("name", [None, "", "tough", "../../etc/passwd", "friendly", "NEUTRAL", "Strict"])
-def test_a_missing_or_unknown_name_falls_back_to_neutral(name):
-    assert get_persona(name) is NEUTRAL
+def test_a_missing_or_unknown_name_falls_back_to_neutral():
+    for name in [None, "", "tough", "../../etc/passwd", "friendly", "NEUTRAL", "Strict"]:
+        assert get_persona(name) is NEUTRAL
 
 
-@pytest.mark.parametrize("persona", PERSONAS.values(), ids=lambda p: p.name)
-def test_a_persona_with_nudges_has_one_line_per_interview_nudge_time(persona):
-    # the TurnTaker fires one nudge per entry in nudge_ms; a missing line would be an index error at runtime
-    assert persona.nudges == () or len(persona.nudges) == len(INTERVIEW_POLICY.nudge_ms)
+def test_a_persona_with_nudges_has_one_line_per_interview_nudge_time():
+    for persona in PERSONAS.values():
+        # the TurnTaker fires one nudge per entry in nudge_ms; a missing line would be an index error at runtime
+        assert persona.nudges == () or len(persona.nudges) == len(INTERVIEW_POLICY.nudge_ms)
 
 
-@pytest.mark.parametrize("line", [OPENING, INTRO_QUESTION, THANKS, SKIP_ACK, CLOSING, HINT_DECLINED, *BRIDGES.values(),
-                                  *NEUTRAL.nudges])
-def test_fixed_lines_are_short_and_plain(line):
-    sentences = [s for s in re.split(r"[.?!]", line) if s.strip()]
-    assert 1 <= len(sentences) <= 2 and len(line) <= 80  # paid TTS characters, and the sentence splitter cuts at . ! ?
-    assert not re.search(r"[{}<>\[\]*_#]", line)  # no template holes or markdown read aloud
+def test_fixed_lines_are_short_and_plain():
+    for line in [OPENING, INTRO_QUESTION, THANKS, SKIP_ACK, CLOSING, HINT_DECLINED, *BRIDGES.values(),
+                                      *NEUTRAL.nudges]:
+        sentences = [s for s in re.split(r"[.?!]", line) if s.strip()]
+        assert 1 <= len(sentences) <= 2 and len(line) <= 80  # paid TTS characters, and the sentence splitter cuts at . ! ?
+        assert not re.search(r"[{}<>\[\]*_#]", line)  # no template holes or markdown read aloud

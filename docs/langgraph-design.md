@@ -443,7 +443,7 @@ Settled: D1, the backend is Python. Open decisions: D3 RAG versus a full-context
 
 ## 13. Interview mode
 
-A second graph, `graph/interview/`, runs a spoken mock interview about the same projects. The audit and design are in `docs/interviewer-mode-plan.md`; the build steps are in `docs/interviewer-mode-features.md`. It shares the voice pipeline, barge-in, heard-history (`heard_history` in `nodes/ingest.py`), the Groq client and the turn log with the recruiter graph, and nothing else: no retrieval, no tools, no booking.
+A second graph, `graph/interview/`, runs a spoken mock interview planned from the candidate's resume and an optional job description. Its design and build steps are in `docs/Interviewer Mode v2 — Resume + JD Interview Design.md`. It shares the voice pipeline, barge-in, heard-history (`heard_history` in `nodes/ingest.py`), the Groq client and the turn log with the recruiter graph, and nothing else: no retrieval, no tools, no booking.
 
 | Node | LLM | Job |
 | --- | --- | --- |

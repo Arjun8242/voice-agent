@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from backend.graph.interview.tag import MAX_TAG_CHARS, TagBuffer, parse_tag
 
 SPEECH = "Right, the scheduler takes a lock. What if its worker dies?"
@@ -23,34 +21,34 @@ def every_split(reply: str) -> list[list[str]]:
 
 # --- parse_tag ---------------------------------------------------------------------
 
-@pytest.mark.parametrize("body, decision", [
-    ("decision=probe", "probe"),
-    (" decision = Challenge ", "challenge"),
-    ("rating=3; decision=next", "next"),  # unknown keys are ignored, order does not matter
-    ("decision=clarify_back;", "clarify_back"),
-    ("decision=example; decision=next", "example"),  # the first one wins
-])
-def test_a_tag_body_gives_its_decision(body, decision):
-    assert parse_tag(body) == decision
+def test_a_tag_body_gives_its_decision():
+    for body, decision in [
+        ("decision=probe", "probe"),
+        (" decision = Challenge ", "challenge"),
+        ("rating=3; decision=next", "next"),  # unknown keys are ignored, order does not matter
+        ("decision=clarify_back;", "clarify_back"),
+        ("decision=example; decision=next", "example"),  # the first one wins
+    ]:
+        assert parse_tag(body) == decision
 
 
-@pytest.mark.parametrize("body", ["", "decision=", "decision=skip", "decision probe", "probe", "rating=3"])
-def test_a_tag_body_without_a_known_decision_gives_none(body):
-    assert parse_tag(body) is None
+def test_a_tag_body_without_a_known_decision_gives_none():
+    for body in ["", "decision=", "decision=skip", "decision probe", "probe", "rating=3"]:
+        assert parse_tag(body) is None
 
 
 # --- the stream buffer: what reaches TTS -------------------------------------------------
 
-@pytest.mark.parametrize("reply", [
-    f"[[decision=probe]]\n{SPEECH}",
-    f"[[decision=probe]] {SPEECH}",  # no newline after the tag
-    f"  \n[[decision=probe]]\n\n{SPEECH}",  # whitespace before and after
-])
-def test_a_tag_is_removed_and_its_decision_kept_however_the_stream_is_cut(reply):
-    for pieces in every_split(reply):
-        spoken, buffer = stream(pieces)
-        assert spoken == SPEECH, pieces
-        assert (buffer.decision, buffer.tag_ok) == ("probe", True)
+def test_a_tag_is_removed_and_its_decision_kept_however_the_stream_is_cut():
+    for reply in [
+        f"[[decision=probe]]\n{SPEECH}",
+        f"[[decision=probe]] {SPEECH}",  # no newline after the tag
+        f"  \n[[decision=probe]]\n\n{SPEECH}",  # whitespace before and after
+    ]:
+        for pieces in every_split(reply):
+            spoken, buffer = stream(pieces)
+            assert spoken == SPEECH, pieces
+            assert (buffer.decision, buffer.tag_ok) == ("probe", True)
 
 
 def test_a_reply_without_a_tag_is_all_speech_and_falls_back_to_next():
@@ -105,7 +103,7 @@ def test_a_second_tag_later_in_the_reply_is_spoken_as_text():
     assert spoken == "Fine. [[decision=next]]"
 
 
-@pytest.mark.parametrize("pieces", [[], [""], ["   ", "\n"]])
-def test_an_empty_reply_speaks_nothing_and_falls_back_to_next(pieces):
-    spoken, buffer = stream(pieces)
-    assert spoken == "" and (buffer.decision, buffer.tag_ok) == ("next", False)
+def test_an_empty_reply_speaks_nothing_and_falls_back_to_next():
+    for pieces in [[], [""], ["   ", "\n"]]:
+        spoken, buffer = stream(pieces)
+        assert spoken == "" and (buffer.decision, buffer.tag_ok) == ("next", False)

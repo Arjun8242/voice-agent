@@ -21,9 +21,16 @@ SEED = "What does Beacon do?"
 TOPICS = [make_topic("deep_dive", "beacon", "Beacon", "Beacon takes a Postgres advisory lock.", SEED)]
 
 
+class EverySession(dict):
+    """The uploaded plans, as the connection sees them: TOPICS for whatever session id it was given."""
+
+    def get(self, session_id, default=None):
+        return {"topics": TOPICS}
+
+
 def run(*args, **kwargs) -> None:
-    """test_voice_conversation's run, with TOPICS as the connection's interview plan."""
-    test_voice_conversation.run(*args, interview_topics=TOPICS, **kwargs)
+    """test_voice_conversation's run, with TOPICS as the session's uploaded plan."""
+    test_voice_conversation.run(*args, interview_plans=EverySession(), **kwargs)
 
 
 def interviewer(*replies: list[str]) -> tuple[object, ScriptedModel]:

@@ -325,13 +325,13 @@ Done when: scripted-answer tests show every planned stage reaches its minimum, n
 
 **Phase 3 — Resume + JD analysis**
 
-- [ ] 3.1 Add a PDF text library; extract text; reject under about 300 characters; cap resume and JD length.
-- [ ] 3.2 Strip contact details.
-- [ ] 3.3 Analysis prompt and pydantic models; one retry on invalid JSON.
-- [ ] 3.4 Claim verification by `source_quote`; drop unmatched claims.
-- [ ] 3.5 Plan assembly into `list[Topic]`, achievements/OSS stage only when present; fallback plan.
-- [ ] 3.6 Upload endpoint: PDF + optional JD → plan, profile summary and term glossary in session state; return the plan preview line.
-- [ ] 3.7 Remove `build_plan(kb)` and the interview KB wiring in `main.py`.
+- [x] 3.1 Add a PDF text library; extract text; reject under about 300 characters; cap resume and JD length.
+- [x] 3.2 Strip contact details.
+- [x] 3.3 Analysis prompt and pydantic models; one retry on invalid JSON.
+- [x] 3.4 Claim verification by `source_quote`; drop unmatched claims.
+- [x] 3.5 Plan assembly into `list[Topic]`, achievements/OSS stage only when present; fallback plan.
+- [x] 3.6 Upload endpoint: PDF + optional JD → plan, profile summary and term glossary in session state; return the plan preview line.
+- [x] 3.7 Remove `build_plan(kb)` and the interview KB wiring in `main.py`.
 
 Done when: fixture resumes produce valid plans, every kept claim's quote exists in its resume, and a scanned PDF is rejected.
 

@@ -3,7 +3,6 @@
 Corresponds to src/providers/tts.ts.
 """
 
-from asyncio import timeout
 import asyncio
 from collections.abc import Awaitable, Callable
 import httpx

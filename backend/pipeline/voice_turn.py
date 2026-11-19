@@ -94,7 +94,7 @@ async def voice_turn(
     persona: str = "",
     speaker: str = "",
     nudge: int | None = None,
-    topics: list | None = None,
+    plan: dict | None = None,
 ) -> None:
     """Run one turn through the graph. Cancellable via task cancellation or interrupt_event.
 
@@ -106,7 +106,7 @@ async def voice_turn(
     turn's stage times are added and one line is written to the turn log (observability/timings.py).
     persona and speaker are for interview mode: the persona goes to the graph, the speaker (its voice) to TTS.
     nudge (interview mode): this turn says the nudge line with that index instead of answering speech.
-    topics (interview mode): this session's plan, saved in the graph's state.
+    plan (interview mode): this session's plan, saved in the graph's state.
     """
 
     t0 = time.perf_counter()
@@ -149,7 +149,7 @@ async def voice_turn(
     try:
         async with asyncio.TaskGroup() as tg:
             async for mode, event in stream_turn(graph, session_id, query, interrupted_reply, visitor_timezone, ui_action,
-                                                 persona, nudge, topics):
+                                                 persona, nudge, plan):
                 if mode == "values":  # state after each step: only the tool calls are needed here
                     tools_used = [c["name"] for c in event.get("tool_calls", [])]
                     continue

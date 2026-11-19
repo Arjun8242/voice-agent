@@ -13,6 +13,7 @@ dependencies = [
     "langgraph>=1.2",
     "pydantic>=2",
     "tzdata",
+    "pypdf>=6",  # resume text for interview mode (interview/resume.py)
 ]
 
 [project.optional-dependencies]

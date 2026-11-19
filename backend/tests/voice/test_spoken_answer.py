@@ -10,7 +10,7 @@ import pytest
 from backend.graph.graph import build_graph
 from backend.graph.nodes.agent import ERROR_REPLY
 from backend.pipeline.barge_in import BargeIn
-from backend.pipeline.sentence import extract_next_sentence, extract_sentences
+from backend.pipeline.sentence import extract_next_sentence
 from backend.server.session import new_conversation
 from backend.tests.helpers import DESCRIPTIONS, FakeGraph, ScriptedModel, call, make_kb, no_retrieval, vt
 from backend.tools.registry import build_registry
@@ -91,9 +91,11 @@ def test_a_cancelled_turn_stops_and_sends_no_done(send, sent):
 # --- splitting the answer into sentences -----------------------------------------------
 
 def test_dots_inside_names_and_numbers_do_not_end_a_sentence():
-    out = extract_sentences("It uses a Next.js dashboard and Node.js workers. Version 3.5 shipped in 2026. Done now.")
-    assert out["sentences"] == ["It uses a Next.js dashboard and Node.js workers.", "Version 3.5 shipped in 2026."]
-    assert out["remaining"] == "Done now."  # the last sentence waits for the end-of-stream flush
+    first = extract_next_sentence("It uses a Next.js dashboard and Node.js workers. Version 3.5 shipped in 2026. Done now.")
+    second = extract_next_sentence(first["remaining"])
+    assert (first["sentence"], second["sentence"]) == ("It uses a Next.js dashboard and Node.js workers.",
+                                                       "Version 3.5 shipped in 2026.")
+    assert extract_next_sentence(second["remaining"]) is None  # the last sentence waits for the end-of-stream flush
 
 
 def test_streamed_tokens_give_the_same_sentences_as_the_whole_text():
@@ -125,12 +127,12 @@ def test_words_over_the_playing_answer_cut_it_off():
     assert cuts == [1]
 
 
-@pytest.mark.parametrize("partial", ["okay", "Okay.", "mm hmm", "Yeah", "acha", "", "  "])
-def test_an_acknowledgement_or_no_words_over_the_playing_answer_never_cuts_it_off(partial):
-    detector, cuts = barge_in()
-    detector.on_speech_start()
-    detector.on_partial(partial)
-    assert cuts == []
+def test_an_acknowledgement_or_no_words_over_the_playing_answer_never_cuts_it_off():
+    for partial in ["okay", "Okay.", "mm hmm", "Yeah", "acha", "", "  "]:
+        detector, cuts = barge_in()
+        detector.on_speech_start()
+        detector.on_partial(partial)
+        assert cuts == []
 
 
 def test_speech_before_any_audio_plays_cuts_the_turn_at_once():

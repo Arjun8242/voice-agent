@@ -29,7 +29,7 @@ def api(monkeypatch):
     app.state.interview_model = ScriptedModel(["[[decision=probe]]\nWhy a lock?"])  # the opening is spoken by code
     app.state.graph = build_graph(no_retrieval, app.state.recruiter_model, aliases={})
     app.state.interview_graph = build_interview_graph(app.state.interview_model)
-    app.state.interview_topics = TOPICS
+    app.state.interview_plans = {session: {"topics": TOPICS} for session in ("iv", "same")}
     return TestClient(app), app.state
 
 
@@ -44,17 +44,17 @@ def test_a_wrong_key_is_refused(api):
     assert post(client, {"session_id": "s", "mode": "interview"}, key="nope").status_code == 401
 
 
-@pytest.mark.parametrize("body", [
-    {"session_id": "s"},  # recruiter mode needs input
-    {"session_id": "s", "answer": "hi"},  # answer is for interviews
-    {"session_id": "s", "mode": "interview", "input": {"text": "hi"}},  # input is for the recruiter
-    {"session_id": "s", "mode": "interview", "answer": "x" * 2001},
-    {"session_id": "s", "mode": "quiz", "answer": "hi"},
-    {"session_id": "s", "mode": "interview", "persona": "x" * 21},
-])
-def test_a_request_that_does_not_fit_its_mode_is_rejected(api, body):
-    client, _ = api
-    assert post(client, body).status_code == 422
+def test_a_request_that_does_not_fit_its_mode_is_rejected(api):
+    for body in [
+        {"session_id": "s"},  # recruiter mode needs input
+        {"session_id": "s", "answer": "hi"},  # answer is for interviews
+        {"session_id": "s", "mode": "interview", "input": {"text": "hi"}},  # input is for the recruiter
+        {"session_id": "s", "mode": "interview", "answer": "x" * 2001},
+        {"session_id": "s", "mode": "quiz", "answer": "hi"},
+        {"session_id": "s", "mode": "interview", "persona": "x" * 21},
+    ]:
+        client, _ = api
+        assert post(client, body).status_code == 422
 
 
 def test_recruiter_requests_work_as_before(api):

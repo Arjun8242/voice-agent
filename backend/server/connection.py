@@ -65,7 +65,7 @@ def valid_timezone(name: object) -> str:
 
 async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph: Any, executor: Any = None,
                             interview_graph: Any = None, evaluator: Callable[[list, list], Awaitable[Any]] | None = None,
-                            interview_topics: list | None = None) -> None:
+                            interview_plans: dict | None = None) -> None:
     """Handle one WebSocket connection from accept() to disconnect.
 
     graph is the compiled agent graph. The connection id is its thread id, so the
@@ -74,8 +74,9 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     interview_graph is the mock-interview graph (graph/interview/); a start_interview message switches
     the connection to it for good. None disables interviews.
     evaluator(answers, topics) -> Report | None writes the end-of-interview report (interview/evaluate.py).
-    interview_topics is this connection's interview plan, sent into the graph's state with every turn.
-    shortcut: the same plan for every connection (phase 1); the resume upload replaces it in phase 3.
+    interview_plans maps session ids to the plans the resume upload built (server/interview_upload.py).
+    This session's plan is sent into the graph's state with every turn, and dropped on disconnect: the
+    graph keeps its own copy, so a refresh mid-interview still continues.
     """
     await ws.accept()
     print("[server] Client connected")
@@ -94,6 +95,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     nudge_turn = 0  # turn id of the last nudge: its audio ending must not restart the silence clock
     report_task: asyncio.Task | None = None  # the report, started once when the interview finishes
     persona: Persona = NEUTRAL  # the interviewer's rules and voice, while interviewing
+    plans = interview_plans if interview_plans is not None else {}
 
     # A new event is created for each turn so a stale event from a cancelled turn
     # cannot abort a newer one.
@@ -176,7 +178,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
                              timings, visitor_timezone=visitor_timezone, ui_action=ui_action,
                              on_booking_execute=start_booking_execute,
                              persona=persona.name if interviewing else "", speaker=persona.voice if interviewing else "",
-                             nudge=nudge, topics=interview_topics if interviewing else None)
+                             nudge=nudge, plan=plans.get(session_id) if interviewing else None)
             if interviewing:
                 await start_report_if_finished()
         except Exception as err:  # CancelledError is not an Exception: a barge-in ends the task as cancelled
@@ -375,6 +377,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
 
     finally:
         turn_taker.dispose()
+        plans.pop(session_id, None)  # the resume-derived plan is not kept after the session
         if report_task is not None:
             report_task.cancel()  # nobody is left to read it: stop spending tokens on it
         stt.close()

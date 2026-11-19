@@ -10,8 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 
-import pytest
-
 from backend.graph.interview.state import Answer
 from backend.interview.evaluate import (
     EVALUATOR_MAX_TOKENS,
@@ -122,14 +120,14 @@ def test_a_quote_from_another_topics_notes_does_not_count():
     assert report.reviews[0].missing_points == [] and report.dropped_quotes == 1
 
 
-@pytest.mark.parametrize("quote", ["Postgres advisory lock", "postgres ADVISORY lock.", "**Postgres advisory lock**"])
-def test_quotes_match_the_notes_whatever_the_case_punctuation_or_markdown(quote):
-    assert in_notes(quote, TOPICS[0]["text"])
+def test_quotes_match_the_notes_whatever_the_case_punctuation_or_markdown():
+    for quote in ["Postgres advisory lock", "postgres ADVISORY lock.", "**Postgres advisory lock**"]:
+        assert in_notes(quote, TOPICS[0]["text"])
 
 
-@pytest.mark.parametrize("quote", ["", "  ", "Redis advisory lock", "lock advisory Postgres"])
-def test_empty_reworded_or_reordered_quotes_do_not_match(quote):
-    assert not in_notes(quote, TOPICS[0]["text"])
+def test_empty_reworded_or_reordered_quotes_do_not_match():
+    for quote in ["", "  ", "Redis advisory lock", "lock advisory Postgres"]:
+        assert not in_notes(quote, TOPICS[0]["text"])
 
 
 def test_unverifiable_claims_are_kept_without_a_quote():
@@ -149,15 +147,15 @@ def test_a_reply_wrapped_in_a_markdown_fence_is_still_read():
     assert evaluate(fake) is not None and len(fake.calls) == 1
 
 
-@pytest.mark.parametrize("bad", [
-    "not json at all",
-    reply([review(1), review(2)]),  # one answer not reviewed
-    reply([review(1), review(1), review(3)]),  # an answer reviewed twice
-    reply(all_reviews(score=6)),
-    reply(all_reviews(correct_points=[{"point": "no quote"}])),
-])
-def test_an_invalid_reply_is_rejected(bad):
-    assert parse_model_report(bad, answer_count=3) is None
+def test_an_invalid_reply_is_rejected():
+    for bad in [
+        "not json at all",
+        reply([review(1), review(2)]),  # one answer not reviewed
+        reply([review(1), review(1), review(3)]),  # an answer reviewed twice
+        reply(all_reviews(score=6)),
+        reply(all_reviews(correct_points=[{"point": "no quote"}])),
+    ]:
+        assert parse_model_report(bad, answer_count=3) is None
 
 
 def test_an_invalid_reply_gets_one_more_try():

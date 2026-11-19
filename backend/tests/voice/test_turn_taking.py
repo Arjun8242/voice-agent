@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import pytest
-
 from backend.pipeline.turn_taking import (
     TurnPolicy,
     TurnTaker,
@@ -87,58 +85,58 @@ class Scene:
 
 # --- text cues -----------------------------------------------------------------
 
-@pytest.mark.parametrize("text", [
-    "okay", "Okay.", "OK", "mm", "Mm-hmm.", "uh-huh", "yeah", "Yes!", "right", "Right, right.", "got it", "sure", "haan",
-])
-def test_short_acknowledgements_are_backchannels(text):
-    assert is_backchannel(text)
+def test_short_acknowledgements_are_backchannels():
+    for text in [
+        "okay", "Okay.", "OK", "mm", "Mm-hmm.", "uh-huh", "yeah", "Yes!", "right", "Right, right.", "got it", "sure", "haan",
+    ]:
+        assert is_backchannel(text)
 
 
-@pytest.mark.parametrize("text", [
-    "okay so", "okay got it then", "yes because redis", "right now", "it uses a lock", "no", "what", "sure thing", "",
-])
-def test_answers_and_questions_are_not_backchannels(text):
-    assert not is_backchannel(text)
+def test_answers_and_questions_are_not_backchannels():
+    for text in [
+        "okay so", "okay got it then", "yes because redis", "right now", "it uses a lock", "no", "what", "sure thing", "",
+    ]:
+        assert not is_backchannel(text)
 
 
-@pytest.mark.parametrize("text, kind", [
-    ("It uses Postgres.", "complete"),
-    ("I used the band saw", "complete"),  # "band" contains "and" but does not end the sentence
-    ("it scales on demand", "complete"),
-    ("hold on to the lock until the job ends", "complete"),  # "hold on" inside an answer is not a request for time
-    ("let me think it uses a lock", "complete"),  # the answer follows in the same breath
-    ("The scheduler uses a lock and", "unfinished"),
-    ("the reason is because", "unfinished"),
-    ("so the reason is, um", "unfinished"),
-    ("it retries three times,", "unfinished"),
-    ("well...", "unfinished"),
-    ("to phir queue matlab", "unfinished"),
-    ("that's it for the queue and", "unfinished"),  # a done phrase only counts at the very end
-    ("Hmm, let me think for a second.", "think"),
-    ("give me a moment", "think"),
-    ("Give me a minute, please.", "think"),
-    ("the reason is, let me think", "think"),
-    ("one second", "think"),
-    ("It retries three times. That's it.", "done"),
-    ("I think that's all", "done"),
-    ("I'm done.", "done"),
-])
-def test_endings_are_classified_by_how_the_final_ends(text, kind):
-    assert classify_ending(text) == kind
+def test_endings_are_classified_by_how_the_final_ends():
+    for text, kind in [
+        ("It uses Postgres.", "complete"),
+        ("I used the band saw", "complete"),  # "band" contains "and" but does not end the sentence
+        ("it scales on demand", "complete"),
+        ("hold on to the lock until the job ends", "complete"),  # "hold on" inside an answer is not a request for time
+        ("let me think it uses a lock", "complete"),  # the answer follows in the same breath
+        ("The scheduler uses a lock and", "unfinished"),
+        ("the reason is because", "unfinished"),
+        ("so the reason is, um", "unfinished"),
+        ("it retries three times,", "unfinished"),
+        ("well...", "unfinished"),
+        ("to phir queue matlab", "unfinished"),
+        ("that's it for the queue and", "unfinished"),  # a done phrase only counts at the very end
+        ("Hmm, let me think for a second.", "think"),
+        ("give me a moment", "think"),
+        ("Give me a minute, please.", "think"),
+        ("the reason is, let me think", "think"),
+        ("one second", "think"),
+        ("It retries three times. That's it.", "done"),
+        ("I think that's all", "done"),
+        ("I'm done.", "done"),
+    ]:
+        assert classify_ending(text) == kind
 
 
-@pytest.mark.parametrize("text, kept", [
-    ("Let me think.", ""),
-    ("Hmm, let me think for a second.", "Hmm"),
-    ("the reason is, let me think", "the reason is"),
-    ("Give me a minute, please.", ""),
-    ("one second", ""),
-    ("hold on to the lock", "hold on to the lock"),  # not at the end: left alone
-    ("let me think it uses a lock", "let me think it uses a lock"),
-    ("It uses a lock.", "It uses a lock."),
-])
-def test_only_a_trailing_request_for_time_is_removed(text, kept):
-    assert remove_think_request(text) == kept
+def test_only_a_trailing_request_for_time_is_removed():
+    for text, kept in [
+        ("Let me think.", ""),
+        ("Hmm, let me think for a second.", "Hmm"),
+        ("the reason is, let me think", "the reason is"),
+        ("Give me a minute, please.", ""),
+        ("one second", ""),
+        ("hold on to the lock", "hold on to the lock"),  # not at the end: left alone
+        ("let me think it uses a lock", "let me think it uses a lock"),
+        ("It uses a lock.", "It uses a lock."),
+    ]:
+        assert remove_think_request(text) == kept
 
 
 # --- hold timers: exact boundaries ---------------------------------------------------
@@ -392,19 +390,19 @@ def test_states_show_thinking_then_speaking_again():
     assert s.states == ["speaking", "thinking", "speaking", "holding"]
 
 
-@pytest.mark.parametrize("finals, decision, segments", [
-    (["It uses Postgres."], "base_hold", 1),
-    (["the queue and"], "long_hold", 1),
-    (["It retries.", "That's it."], "done_phrase", 2),
-    (["let me think", "one", "two"], "base_hold", 3),
-])
-def test_the_log_gets_why_the_turn_was_taken_and_how_many_finals_it_merged(finals, decision, segments):
-    s = Scene()
-    for text in finals:
-        s.say(text)
-    s.clock.advance(5000)
-    assert len(s.commits) == 1
-    assert (s.taker.last_decision, s.taker.last_segments) == (decision, segments)
+def test_the_log_gets_why_the_turn_was_taken_and_how_many_finals_it_merged():
+    for finals, decision, segments in [
+        (["It uses Postgres."], "base_hold", 1),
+        (["the queue and"], "long_hold", 1),
+        (["It retries.", "That's it."], "done_phrase", 2),
+        (["let me think", "one", "two"], "base_hold", 3),
+    ]:
+        s = Scene()
+        for text in finals:
+            s.say(text)
+        s.clock.advance(5000)
+        assert len(s.commits) == 1
+        assert (s.taker.last_decision, s.taker.last_segments) == (decision, segments)
 
 
 def test_dispose_cancels_the_pending_commit_and_the_nudges():  # T16

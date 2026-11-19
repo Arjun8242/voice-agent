@@ -3,7 +3,6 @@
 Corresponds to src/server/session.ts.
 """
 import asyncio
-from typing import Any
 
 REPORT_WAIT_S = 1.0  # how long a new turn waits for the client's playback report
 CUT_OFF_NOTE = "(the visitor interrupted here)"

@@ -41,7 +41,7 @@ The design is written up in [docs/langgraph-design.md](docs/langgraph-design.md)
 
 ## Interview mode
 
-Pick **Mock interview** in the page, choose an interviewer and press **Start interview**. The interview runs in stages: an intro, then deep-dives, technical, behavioural and achievement questions when the plan has them, and you answer out loud. For now every session gets the plan built from the knowledge base (an intro, the projects and the internship); a plan per candidate from their resume and a job description is being built ([v2 design](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md)).
+Pick **Mock interview** in the page, choose an interviewer and press **Start interview**. The interview runs in stages: an intro, then deep-dives, technical, behavioural and achievement questions when the plan has them, and you answer out loud. Each session's plan is built from the candidate's resume PDF and an optional job description, uploaded before the interview starts ([v2 design](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md)). The page's upload step is not built yet: for now, upload with `POST /interview/upload` (below).
 
 ```
 START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response -> END
@@ -51,7 +51,8 @@ START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response
                        '---> close (end, time cap, last topic, no LLM) '
 ```
 
-- **Grounded.** Each topic is a whole project document from `knowledge_base/docs/projects/` (or the internship from `experience.yaml`). The interviewer may ask only about those notes or about what you said, and never states a fact outside them (`backend/prompts/interviewer.md`).
+- **Planned from the resume, checked by code.** `POST /interview/upload` rejects a scan or a file that is not a PDF before any LLM call, strips contact details (`backend/interview/resume.py`), then makes one Groq call that reads the resume and JD (`backend/interview/analyze.py`, `backend/prompts/analyzer.md`). Every claim it returns must quote the resume; code drops any claim whose quote is not really there. Code then builds one topic per stage from what is left (`backend/interview/assemble.py`), and falls back to a plan about the resume as a whole if the call fails twice. Resume and JD text are wrapped as data, never instructions.
+- **Grounded.** Each topic's notes hold only verified claims and the JD requirement. The interviewer may ask only about those notes or about what you said, and never states a fact outside them (`backend/prompts/interviewer.md`).
 - **Code owns the pacing.** Code asks every first question: the opening, each topic's seed question and a bridge line between stages. The model only writes follow-ups, starting each reply with a control line such as `[[decision=probe]]`, which is never spoken. Each topic has a minimum and maximum number of questions and a top rung on its follow-up ladder, set by its stage (`backend/interview/plan.py`); `backend/graph/interview/pacing.py` offers the model only the decisions that fit, and stops a topic early when later stages need the time for their minimums. The interview ends after 15 minutes (`INTERVIEW_MAX_SECONDS`).
 - **Mis-heard terms.** Before anything else, code puts tech names the speech-to-text split or mis-heard back together from the session's glossary ("post gress" -> "PostgreSQL", `backend/interview/glossary.py`) and keeps the corrections with the answer.
 - **Clarifications are free.** "Repeat that", "can I get a hint", "what do you mean", "skip" and "let's end the interview" are recognised by fixed phrases (`backend/interview/intents.py`). Repeat needs no LLM call, and none of them is graded. A request for help in other words ("I want some level of hint now") is labelled `hint_request` by the model in its control tag; code then gives or declines the hint by the persona's rule, and nothing the model wrote after the label is spoken.
@@ -79,11 +80,11 @@ The audit and design are in [docs/interviewer-mode-plan.md](docs/interviewer-mod
 
 ```
 backend/
-  server/      WebSocket endpoint, connection and session handling
+  server/      WebSocket endpoint, connection and session handling, the interview resume upload
   pipeline/    voice turn, sentence splitting, barge-in, turn-taking
   graph/       the LangGraph agent: nodes, state, runner, internal API
     interview/ the interview graph: state, nodes, flow (topic moves, the end), pacing (budgets, time), prompt, control tag
-  interview/   interview plan and stage budgets, intents, personas and fixed lines, glossary, the end-of-interview evaluator
+  interview/   resume checks, the analysis call, plan assembly and stage budgets, intents, personas and fixed lines, glossary, the evaluator
   tools/       searchProjects, getProjectDetail, getSkills, getLinks, checkAvailability, startBooking, cancelBooking
   booking/     availability, booking store, executor
   gcal/        Google Calendar adapter and the fake
@@ -181,12 +182,16 @@ Optional LangSmith tracing is switched on with the `LANGSMITH_*` settings. Names
 
 `POST /internal/turn` runs the same agent from text alone, for testing without speech. It is disabled unless `INTERNAL_API_KEY` is set.
 
-With `"mode": "interview"` it runs the mock interviewer instead, so it can be tried with no Sarvam spend (follow-up turns still call Groq; first questions are spoken by code). Leave out `answer` to get the opening question; `persona` (`neutral` or `strict`) is read on the first turn. The reply includes the flow state: topic, level, follow-ups used, the control-tag decision and the recorded answers.
+With `"mode": "interview"` it runs the mock interviewer instead, so it can be tried with no Sarvam spend (follow-up turns still call Groq; first questions are spoken by code). Upload a resume for the session first (`session_id` must be 32 hex characters); leave out `answer` to get the opening question; `persona` (`neutral` or `strict`) is read on the first turn. The reply includes the flow state: topic, level, follow-ups used, the control-tag decision and the recorded answers.
 
 ```bash
-curl -s localhost:3001/internal/turn -H "api-key: $INTERNAL_API_KEY" -H "content-type: application/json"   -d '{"session_id": "iv1", "mode": "interview", "persona": "strict"}'
-curl -s localhost:3001/internal/turn -H "api-key: $INTERNAL_API_KEY" -H "content-type: application/json"   -d '{"session_id": "iv1", "mode": "interview", "answer": "It schedules checks with a Postgres lock."}'
+SID=0123456789abcdef0123456789abcdef
+curl -s localhost:3001/interview/upload -H "content-type: application/json" -d "{\"session_id\": \"$SID\", \"resume_pdf\": \"$(base64 -w0 resume.pdf)\", \"job_description\": \"Backend engineer, Java\"}"
+curl -s localhost:3001/internal/turn -H "api-key: $INTERNAL_API_KEY" -H "content-type: application/json" -d "{\"session_id\": \"$SID\", \"mode\": \"interview\", \"persona\": \"strict\"}"
+curl -s localhost:3001/internal/turn -H "api-key: $INTERNAL_API_KEY" -H "content-type: application/json" -d "{\"session_id\": \"$SID\", \"mode\": \"interview\", \"answer\": \"I'm a final-year student.\"}"
 ```
+
+The upload costs one Groq call and no Sarvam. The plan is kept in memory until the session's WebSocket closes.
 
 ## Measured so far
 

@@ -143,7 +143,7 @@ class Harness:
         await self.until(lambda: len(self.of_type("tts_end")) >= count, f"{count} spoken sentences")
 
 
-def run(scenario, model, registry=None, graph=None, interview_graph=None, evaluator=None, interview_topics=None):
+def run(scenario, model, registry=None, graph=None, interview_graph=None, evaluator=None, interview_plans=None):
     """Start a connection on a fresh graph (or the given one), run the scenario coroutine, then disconnect."""
     async def main():
         ws, holder = FakeWebSocket(), []
@@ -152,7 +152,7 @@ def run(scenario, model, registry=None, graph=None, interview_graph=None, evalua
         original = connection.create_stt
         connection.create_stt = lambda handlers: holder.append(FakeStt(handlers)) or holder[-1]
         task = asyncio.create_task(connection.handle_connection(ws, None, graph, interview_graph=interview_graph,
-                                                                evaluator=evaluator, interview_topics=interview_topics))
+                                                                evaluator=evaluator, interview_plans=interview_plans))
         try:
             h = Harness(ws, holder, task, model)
             await h.until(lambda: holder, "the connection to start")

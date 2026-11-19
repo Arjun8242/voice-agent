@@ -160,9 +160,9 @@ def test_a_cut_off_question_is_kept_only_as_far_as_it_was_heard():
     graph = build_interview_graph(model)
 
     async def run():
-        async for _ in stream_turn(graph, "s1", "", topics=TOPICS):  # the shared runner voice_turn uses
+        async for _ in stream_turn(graph, "s1", "", plan={"topics": TOPICS}):  # the shared runner voice_turn uses
             pass
-        async for _ in stream_turn(graph, "s1", "Postgres.", interrupted_reply="Hi, I'll be your", topics=TOPICS):
+        async for _ in stream_turn(graph, "s1", "Postgres.", interrupted_reply="Hi, I'll be your", plan={"topics": TOPICS}):
             pass
     asyncio.run(run())
 
