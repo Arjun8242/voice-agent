@@ -42,13 +42,13 @@ def model_analysis() -> dict:
         "achievements": [],
         "oss_contributions": [{"id": "oss-fastapi", "text": "Fixed a race in FastAPI background tasks",
                                "source_quote": "Merged a pull request to FastAPI"}],
-        "jd_requirements": {"technical": ["Java", "Spring Boot", "Kafka"], "soft_skills": ["ownership"], "seniority": "SDE-1"},
+        "jd_requirements": {"technical": ["Java", "Spring Boot", "Kafka"], "seniority": "SDE-1"},
         "gaps": [{"requirement": "Java", "resume_evidence": "none"}],
         "topics": [
             {"kind": "deep_dive", "ref": "acme", "source": "resume", "seed_question": "How did you cut checkout latency at Acme?",
              "framework": {"key_points": ["measured p99 first", "cache invalidation"], "star": "", "likely_followups": []}},
             {"kind": "technical", "ref": "Java", "source": "gap", "seed_question": "How does garbage collection work in Java?"},
-            {"kind": "behavioral", "ref": "ownership", "source": "jd",
+            {"kind": "behavioral", "ref": "ownership", "source": "jd",  # ignored: behavioral comes from the bank
              "seed_question": "Tell me about a time you owned a problem end to end.",
              "framework": {"key_points": ["what was at stake"], "star": "S, T, A, R", "likely_followups": []}},
             {"kind": "achievement", "ref": "oss-fastapi", "source": "resume",

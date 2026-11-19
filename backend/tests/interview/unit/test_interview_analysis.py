@@ -8,6 +8,7 @@ import asyncio
 
 from backend.interview.analyze import Analysis, analyze, load_analyzer_prompt
 from backend.interview.assemble import TEMPLATE_SEEDS, assemble_plan, fallback_plan
+from backend.interview.behavioral import BEHAVIORAL_QUESTIONS
 from backend.interview.plan import STAGES
 from backend.tests.helpers import ScriptedModel
 from backend.tests.interview.fixtures import JOB_DESCRIPTION, RESUME, model_analysis, model_reply
@@ -77,8 +78,6 @@ def test_a_seed_that_is_not_a_question_or_prompt_is_replaced_and_its_framework_d
     assert injected["seed_question"] == TEMPLATE_SEEDS["achievement"].format(title="your open-source contribution")
     assert injected["framework"] == {}  # written for the rejected seed, so it would grade the wrong question
     assert topics["deep_dive"]["seed_question"] == "How did you cut checkout latency at Acme?"  # a question is kept
-    assert topics["behavioral"]["seed_question"] == "Tell me about a time you owned a problem end to end."  # so is a prompt
-    assert topics["behavioral"]["framework"]["star"] == "S, T, A, R"
 
 
 def test_a_technical_topic_is_grounded_in_the_claims_that_name_it():
@@ -89,11 +88,27 @@ def test_a_technical_topic_is_grounded_in_the_claims_that_name_it():
     assert "Skills on the resume" not in topics["technical"]["text"]
 
 
-def test_without_a_jd_the_plan_uses_resume_skills_and_generic_soft_skills():
+def test_without_a_jd_the_technical_topic_uses_a_resume_skill():
     analysis, _ = run_analysis(model_reply(without_jd(model_analysis())))
     topics = {t["kind"]: t for t in assemble_plan(analysis)["topics"]}
     assert (topics["technical"]["title"], topics["technical"]["source"]) == ("TypeScript", "resume")
-    assert "ownership, working through a disagreement" in topics["behavioral"]["text"]
+
+
+def test_the_behavioral_question_always_comes_from_the_bank_with_its_framework():
+    analysis, _ = run_analysis(model_reply())  # has a JD, and the model planned its own behavioral topic
+    last = BEHAVIORAL_QUESTIONS[-1]
+    topics = {t["kind"]: t for t in assemble_plan(analysis, choose=lambda bank: bank[-1])["topics"]}
+    behavioral = topics["behavioral"]
+    assert behavioral["seed_question"] == last["question"]  # not the model's "owned a problem end to end"
+    assert behavioral["framework"]["key_points"] == last["key_points"]
+    assert behavioral["framework"]["red_flags"] == last["red_flags"]
+    assert "Acme Payments" in behavioral["text"]  # follow-ups can link the story to the candidate's work
+
+
+def test_each_plan_draws_its_behavioral_question_at_random():
+    analysis, _ = run_analysis(model_reply())
+    asked = {assemble_plan(analysis)["topics"][3]["seed_question"] for _ in range(200)}
+    assert asked == {question["question"] for question in BEHAVIORAL_QUESTIONS}
 
 
 def test_a_stage_without_material_is_left_out():

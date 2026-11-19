@@ -45,8 +45,8 @@ def interview_turn(app, answer: str | None = None) -> dict:
 def test_the_upload_returns_a_preview_and_the_interview_asks_the_plans_questions(app):
     response = upload(app, text_pdf(RESUME))
     assert response.status_code == 200
-    assert response.json()["preview"] == ("We'll cover your work at Acme Payments, Java, how you work with others "
-                                          "and your open-source contribution.")
+    assert response.json()["preview"] == ("We'll cover your work at Acme Payments, Java, how you work through real "
+                                          "situations and your open-source contribution.")
     assert interview_turn(app)["reply"] == f"{OPENING} {INTRO_QUESTION}"
     second = interview_turn(app, "I'm a final-year student who interned at Acme.")
     assert second["reply"] == f"{THANKS} {BRIDGES['deep_dive']} How did you cut checkout latency at Acme?"

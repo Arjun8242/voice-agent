@@ -56,7 +56,6 @@ class Experience(BaseModel):
 
 class JdRequirements(BaseModel):
     technical: list[str] = []
-    soft_skills: list[str] = []
     seniority: str = ""
 
 
@@ -72,7 +71,7 @@ class Framework(BaseModel):
 
 
 class PlannedTopic(BaseModel):
-    kind: Literal["deep_dive", "technical", "behavioral", "achievement"]
+    kind: Literal["deep_dive", "technical", "behavioral", "achievement"]  # behavioral is ignored: it comes from the bank
     ref: str  # a project, experience, achievement or oss id; a requirement name for technical
     source: Literal["resume", "jd", "gap"] = "resume"
     seed_question: str

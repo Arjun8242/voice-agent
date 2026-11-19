@@ -12,25 +12,27 @@ Rules a reader would not guess:
   for its own question) is dropped with it.
 - A technical topic's notes are the verified claims that name it, so follow-ups stay on the
   candidate's own work; only when no claim names it do the notes fall back to the skills list.
-- Behavioral always has material: with no soft skills in the JD it uses generic SDE ones (W7).
+- Behavioral always comes from the fixed bank (interview/behavioral.py), picked at random, with or
+  without a job description: the analysis does not plan it, and any behavioral topic it returns is ignored.
 - If the analysis failed twice, fallback_plan asks about the resume as a whole: intro, one deep-dive
   grounded in the resume text, and a behavioral question.
 """
 
 from __future__ import annotations
 
+import random
 import re
+from collections.abc import Callable
 
 from backend.interview.analyze import Analysis, PlannedTopic
+from backend.interview.behavioral import behavioral_topic
 from backend.interview.plan import InterviewPlan, Topic, intro_topic, make_topic, order_plan
 
 MAX_SEED_CHARS = 200
 MAX_SUMMARY_CHARS = 1500
-GENERIC_SOFT_SKILLS = ["ownership", "working through a disagreement", "learning from a failure"]
 TEMPLATE_SEEDS = {
     "deep_dive": "Tell me about {title}. What did you build, and what was your part?",
     "technical": "How would you explain {title}, and where have you used it?",
-    "behavioral": "Tell me about a time you disagreed with a teammate. What happened?",
     "achievement": "Tell me about {title}. What exactly did you do?",
 }
 FALLBACK_SEED = "Pick the project or role on your resume you're proudest of. What did you build?"
@@ -87,15 +89,6 @@ def technical_material(analysis: Analysis, ref: str) -> tuple[str, str]:
     return ref, "\n".join(lines)
 
 
-def behavioral_material(analysis: Analysis) -> tuple[str, str]:
-    skills = analysis.jd_requirements.soft_skills or GENERIC_SOFT_SKILLS
-    work = [p.name for p in analysis.projects] + [f"{e.role} at {e.organization}" for e in analysis.experience]
-    lines = [f"Soft skills to ask about: {', '.join(skills)}"]
-    if work:
-        lines.append(f"Ask in the context of the candidate's own work: {', '.join(work)}")
-    return "how you work with others", "\n".join(lines)
-
-
 def achievement_material(analysis: Analysis, ref: str) -> tuple[str, str] | None:
     for item in analysis.oss_contributions:
         if item.id == ref:
@@ -112,8 +105,6 @@ def material(analysis: Analysis, kind: str, ref: str) -> tuple[str, str] | None:
         return deep_dive_material(analysis, ref)
     if kind == "technical":
         return technical_material(analysis, ref) if ref.strip() else None
-    if kind == "behavioral":
-        return behavioral_material(analysis)
     return achievement_material(analysis, ref)
 
 
@@ -123,7 +114,6 @@ def default_topic(analysis: Analysis, kind: str) -> PlannedTopic | None:
     refs = {
         "deep_dive": [e.id for e in analysis.experience] + [p.id for p in analysis.projects],
         "technical": gaps + required + analysis.skills,
-        "behavioral": ["teamwork"],
         "achievement": [i.id for i in analysis.oss_contributions] + [i.id for i in analysis.achievements],
     }[kind]
     if not refs:
@@ -131,7 +121,7 @@ def default_topic(analysis: Analysis, kind: str) -> PlannedTopic | None:
     source = "resume"
     if refs[0] in gaps:
         source = "gap"
-    elif refs[0] in required or (kind == "behavioral" and analysis.jd_requirements.soft_skills):
+    elif refs[0] in required:
         source = "jd"
     return PlannedTopic(kind=kind, ref=refs[0], source=source, seed_question="")
 
@@ -142,16 +132,21 @@ def stage_topic(analysis: Analysis, kind: str) -> Topic | None:
     if chosen is None:
         return None
     title, text = material(analysis, kind, chosen.ref)
-    source = chosen.source if kind in ("technical", "behavioral") else "resume"
+    source = chosen.source if kind == "technical" else "resume"
     seed = chosen.seed_question.strip()
     if not is_spoken_question(seed):  # the model's framework was written for its own question: drop both
         return make_topic(kind, slug(chosen.ref), title, text, TEMPLATE_SEEDS[kind].format(title=title), source=source)
     return make_topic(kind, slug(chosen.ref), title, text, seed, source=source, framework=chosen.framework.model_dump())
 
 
-def assemble_plan(analysis: Analysis) -> InterviewPlan:
-    topics = [intro_topic()]
-    for kind in ("deep_dive", "technical", "behavioral", "achievement"):
+def own_work(analysis: Analysis) -> list[str]:
+    return [p.name for p in analysis.projects] + [f"{e.role} at {e.organization}" for e in analysis.experience]
+
+
+def assemble_plan(analysis: Analysis, choose: Callable = random.choice) -> InterviewPlan:
+    """choose picks the behavioral question from the bank (random by default)."""
+    topics = [intro_topic(), behavioral_topic(own_work(analysis), choose)]
+    for kind in ("deep_dive", "technical", "achievement"):
         topic = stage_topic(analysis, kind)
         if topic is not None:
             topics.append(topic)
@@ -161,9 +156,7 @@ def assemble_plan(analysis: Analysis) -> InterviewPlan:
                          glossary=glossary)
 
 
-def fallback_plan(resume: str) -> InterviewPlan:
+def fallback_plan(resume: str, choose: Callable = random.choice) -> InterviewPlan:
     """The plan when the analysis failed: questions grounded in the resume text itself."""
     deep_dive = make_topic("deep_dive", "resume", "your resume", resume, FALLBACK_SEED)
-    behavioral = make_topic("behavioral", "teamwork", "how you work with others",
-                            f"Soft skills to ask about: {', '.join(GENERIC_SOFT_SKILLS)}", TEMPLATE_SEEDS["behavioral"])
-    return InterviewPlan(topics=[intro_topic(), deep_dive, behavioral], profile_summary="", glossary=[])
+    return InterviewPlan(topics=[intro_topic(), deep_dive, behavioral_topic([], choose)], profile_summary="", glossary=[])

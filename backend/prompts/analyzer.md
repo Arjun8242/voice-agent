@@ -15,7 +15,7 @@ Return only this JSON object, with no text before or after it:
   "skills": [],
   "achievements": [{"id": "", "text": "", "source_quote": ""}],
   "oss_contributions": [{"id": "", "text": "", "source_quote": ""}],
-  "jd_requirements": {"technical": [], "soft_skills": [], "seniority": ""},
+  "jd_requirements": {"technical": [], "seniority": ""},
   "gaps": [{"requirement": "", "resume_evidence": ""}],
   "topics": [{"kind": "", "ref": "", "source": "", "seed_question": "", "framework": {"key_points": [], "star": "", "likely_followups": []}}]
 }
@@ -35,9 +35,10 @@ Plan at most one topic per kind, in this order, and leave a kind out when there 
 
 1. deep_dive: the most substantial role or project, preferring one with numbers. ref is its id.
 2. technical: a technical requirement from the job description, a gap first; with no job description, the candidate's strongest skill. ref is the requirement or skill name. source is "gap", "jd" or "resume".
-3. behavioral: a soft skill the job description asks for, asked in the context of the candidate's own work; with no job description, a common software-team skill such as ownership, disagreement or learning from a failure. source is "jd" or "resume".
-4. achievement: the single most substantial open-source contribution (prefer one with a concrete pull request or feature) or achievement. ref is its id. Only if the resume has one.
+3. achievement: the single most substantial open-source contribution (prefer one with a concrete pull request or feature) or achievement. ref is its id. Only if the resume has one.
 
-seed_question: the first question of the topic, spoken aloud. One short question ending with "?", at most 25 words, plain speech, about the candidate's own work. For behavioral, ask for a specific situation.
+seed_question: the first question of the topic, spoken aloud. One short question ending with "?", at most 25 words, plain speech, about the candidate's own work.
 
-framework: what a strong answer covers, for the report after the interview. key_points: 3 to 5 short points. star: for behavioral only, what a complete situation, task, action and result would include. likely_followups: 2 or 3 questions an interviewer would ask next.
+framework: what a strong answer covers, for the report after the interview. key_points: 3 to 5 short points. star: leave empty. likely_followups: 2 or 3 questions an interviewer would ask next.
+
+Do not plan a behavioral topic: behavioral questions come from a fixed list.
