@@ -337,8 +337,8 @@ Done when: fixture resumes produce valid plans, every kept claim's quote exists 
 
 **Phase 4 — Report**
 
-- [ ] 4.1 Evaluator prompt: bands, rubric per `kind`, frameworks, covered vs missed, mis-heard terms listed and never penalised.
-- [ ] 4.2 Report model and `InterviewReport.svelte`: per question transcript, framework, band, improvement, gap flag.
+- [x] 4.1 Evaluator prompt: bands, rubric per `kind`, frameworks, covered vs missed, mis-heard terms listed and never penalised.
+- [x] 4.2 Report model and `InterviewReport.svelte`: per question transcript, framework, band, improvement, gap flag.
 
 Done when: a scripted interview produces a report with an entry for every graded answer and none for hints, repeats or skips.
 

@@ -13,7 +13,7 @@ export const MODES: { value: Mode; label: string }[] = [
 ];
 
 export const PERSONAS: { name: PersonaName; label: string; description: string }[] = [
-  { name: 'neutral', label: 'Neutral', description: 'Calm, up to two follow-ups per topic, hints when you ask.' },
+  { name: 'neutral', label: 'Neutral', description: 'Calm, gentle nudges, hints when you ask.' },
   { name: 'strict', label: 'Strict', description: 'Exacting, questions your choices, no hints.' },
 ];
 
@@ -25,36 +25,57 @@ export function endInterviewMessage(): string {
   return JSON.stringify({ type: 'end_interview' });
 }
 
-// ── The end-of-interview report (backend/interview/evaluate.py Report) ──────────────────────
+// ── The end-of-interview report (backend/interview/report.py Report) ────────────────────────
 
-export interface QuotedPoint {
-  point: string;
-  quote: string; // copied from the project notes; the server dropped any it could not find there
+export type Band = 'strong' | 'ok' | 'weak';
+
+export interface HeardAs {
+  heard: string;
+  read_as: string;
 }
 
-export interface QuotedClaim {
-  claim: string;
-  quote: string;
+export interface Framework {
+  key_points: string[];
+  red_flags: string[];
+  star: string;
+  likely_followups: string[];
 }
 
 export interface AnswerReview {
   topic_id: string;
   topic: string;
+  kind: string; // the stage: deep_dive, technical, behavioral, achievement
   question: string;
   answer: string;
-  score: number; // 1-5
-  correct_points: QuotedPoint[];
-  missing_points: QuotedPoint[];
-  incorrect_claims: QuotedClaim[];
-  unverifiable_claims: string[];
+  band: Band;
+  framework: Framework;
+  covered: string[]; // key points, as the framework words them
+  missed: string[];
+  improvement: string;
+  gap: boolean; // a job requirement the resume did not show
+  corrected: HeardAs[]; // terms the server fixed in the transcript
+  read_by_meaning: HeardAs[]; // terms the evaluator read by meaning; never counted against the answer
+}
+
+export interface StageBand {
+  kind: string;
+  band: Band;
 }
 
 export interface InterviewReport {
   reviews: AnswerReview[];
-  tips: string[];
-  average_score: number | null;
-  dropped_quotes: number;
+  stages: StageBand[];
+  strengths: string[];
+  improvements: string[];
+  gaps_touched: string[];
 }
+
+export const STAGE_NAMES: Record<string, string> = {
+  deep_dive: 'Experience deep-dive',
+  technical: 'Technical',
+  behavioral: 'Behavioral',
+  achievement: 'Achievement',
+};
 
 export type ReportState = { status: 'pending' } | { status: 'failed' } | { status: 'ready'; report: InterviewReport };
 
@@ -68,5 +89,5 @@ export function reportStateFrom(status: unknown, report: unknown): ReportState |
 function isReport(value: unknown): value is InterviewReport {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<InterviewReport>;
-  return Array.isArray(candidate.reviews) && Array.isArray(candidate.tips);
+  return Array.isArray(candidate.reviews) && Array.isArray(candidate.stages) && Array.isArray(candidate.strengths);
 }

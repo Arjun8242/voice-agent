@@ -310,9 +310,9 @@ def test_recruiter_mode_never_nudges(monkeypatch):
 
 # --- the report (C4) ----------------------------------------------------------------------------
 
-from backend.interview.evaluate import Report  # noqa: E402
+from backend.interview.report import Report  # noqa: E402
 
-EMPTY_REPORT = Report(reviews=[], tips=["Name the component first."], average_score=None, dropped_quotes=0)
+EMPTY_REPORT = Report(reviews=[], stages=[], strengths=["Name the component first."], improvements=[], gaps_touched=[])
 
 
 class RecordingEvaluator:
@@ -352,7 +352,7 @@ def test_the_end_button_starts_the_report_with_the_recorded_answers():
         end(h)
         await h.until(lambda: len(reports(h)) == 2, "the report")
         assert [r["status"] for r in reports(h)] == ["pending", "ready"]
-        assert reports(h)[1]["report"]["tips"] == ["Name the component first."]
+        assert reports(h)[1]["report"]["strengths"] == ["Name the component first."]
         assert all("turnId" not in r for r in reports(h))  # never dropped as a stale turn's message
     run(scenario, GatedModel(), interview_graph=graph, evaluator=evaluator)
     assert evaluator.calls == [[{"topic_id": "deep_dive:beacon", "question": SEED, "text": "It schedules checks."}]]

@@ -1,30 +1,27 @@
 <script lang="ts">
-  import type { ReportState } from '$lib/interview';
+  import { STAGE_NAMES, type Band, type ReportState } from '$lib/interview';
 
-  // Every quote shown here was checked by the server against the project notes (interview/evaluate.py).
+  // Covered and missed points are the framework's own words, picked by the server (interview/report.py).
   let { state }: { state: ReportState } = $props();
 
-  const SCORE_TONE: Record<number, string> = {
-    1: 'bg-red-500/20 text-red-300',
-    2: 'bg-orange-500/20 text-orange-300',
-    3: 'bg-yellow-500/20 text-yellow-200',
-    4: 'bg-emerald-500/20 text-emerald-300',
-    5: 'bg-emerald-500/30 text-emerald-200',
+  const BAND_TONE: Record<Band, string> = {
+    strong: 'bg-emerald-500/20 text-emerald-300',
+    ok: 'bg-yellow-500/20 text-yellow-200',
+    weak: 'bg-red-500/20 text-red-300',
   };
 </script>
 
-{#snippet quoted(title: string, items: { text: string; quote: string }[], mark: string)}
+{#snippet band(value: Band)}
+  <span class="rounded-full px-2 py-0.5 text-xs font-medium {BAND_TONE[value]}">{value}</span>
+{/snippet}
+
+{#snippet list(title: string, items: string[], mark: string)}
   {#if items.length}
     <div>
       <h4 class="text-xs font-medium uppercase tracking-wider text-[hsl(215,20%,55%)] mb-1">{title}</h4>
-      <ul class="flex flex-col gap-2">
+      <ul class="flex flex-col gap-1 text-sm">
         {#each items as item, i (i)}
-          <li class="text-sm">
-            <span aria-hidden="true">{mark}</span> {item.text}
-            <blockquote class="mt-1 ml-5 border-l-2 border-[hsl(217,33%,30%)] pl-2 text-xs italic text-[hsl(215,20%,60%)]">
-              “{item.quote}”
-            </blockquote>
-          </li>
+          <li><span aria-hidden="true">{mark}</span> {item}</li>
         {/each}
       </ul>
     </div>
@@ -37,48 +34,57 @@
   {#if state.status === 'pending'}
     <p class="text-sm text-[hsl(215,20%,65%)]" role="status">Preparing your report…</p>
   {:else if state.status === 'failed'}
-    <p class="text-sm text-red-300" role="alert">The report could not be written this time. Your answers were not lost, but there is no score for them.</p>
+    <p class="text-sm text-red-300" role="alert">The report could not be written this time. Your answers were not lost, but they were not reviewed.</p>
   {:else if state.report.reviews.length === 0}
-    <p class="text-sm text-[hsl(215,20%,65%)]">No answers were recorded, so there is nothing to score.</p>
+    <p class="text-sm text-[hsl(215,20%,65%)]">No answers were recorded, so there is nothing to review.</p>
   {:else}
-    <p class="text-sm">
-      Average score <strong class="text-base">{state.report.average_score}</strong> / 5 over
-      {state.report.reviews.length} {state.report.reviews.length === 1 ? 'answer' : 'answers'}.
-    </p>
+    <ul class="flex flex-wrap gap-2" aria-label="Band per stage">
+      {#each state.report.stages as stage (stage.kind)}
+        <li class="flex items-center gap-2 text-sm">{STAGE_NAMES[stage.kind] ?? stage.kind} {@render band(stage.band)}</li>
+      {/each}
+    </ul>
 
-    {#if state.report.tips.length}
-      <div>
-        <h3 class="text-sm font-medium mb-1">Tips for next time</h3>
-        <ol class="list-decimal ml-5 flex flex-col gap-1 text-sm">
-          {#each state.report.tips as tip, i (i)}
-            <li>{tip}</li>
-          {/each}
-        </ol>
-      </div>
-    {/if}
+    {@render list('Strengths', state.report.strengths, '✓')}
+    {@render list('To work on', state.report.improvements, '→')}
+    {@render list('Job requirements your resume did not show, asked about', state.report.gaps_touched, '!')}
 
     {#each state.report.reviews as review, i (i)}
       <article class="rounded-lg border border-[hsl(217,33%,22%)] p-3 flex flex-col gap-3">
         <header class="flex items-center justify-between gap-2">
-          <h3 class="text-sm font-medium">{i + 1}. {review.topic}</h3>
-          <span class="rounded-full px-2 py-0.5 text-xs font-medium {SCORE_TONE[review.score] ?? ''}">{review.score} / 5</span>
+          <h3 class="text-sm font-medium">
+            {i + 1}. {review.topic}
+            <span class="text-xs text-[hsl(215,20%,55%)]">· {STAGE_NAMES[review.kind] ?? review.kind}</span>
+            {#if review.gap}<span class="ml-1 rounded px-1.5 py-0.5 text-xs bg-orange-500/20 text-orange-300">JD gap</span>{/if}
+          </h3>
+          {@render band(review.band)}
         </header>
         <p class="text-sm text-[hsl(215,20%,75%)]"><span class="text-[hsl(215,20%,55%)]">Q:</span> {review.question}</p>
         <p class="text-sm text-[hsl(215,20%,75%)]"><span class="text-[hsl(215,20%,55%)]">You:</span> {review.answer}</p>
 
-        {@render quoted('Got right', review.correct_points.map((p) => ({ text: p.point, quote: p.quote })), '✓')}
-        {@render quoted('Missed', review.missing_points.map((p) => ({ text: p.point, quote: p.quote })), '•')}
-        {@render quoted('Not what the notes say', review.incorrect_claims.map((c) => ({ text: c.claim, quote: c.quote })), '✗')}
+        {@render list('Covered', review.covered, '✓')}
+        {@render list('Missed', review.missed, '•')}
+        {#if review.improvement}
+          <p class="text-sm"><span class="text-[hsl(215,20%,55%)]">Next time:</span> {review.improvement}</p>
+        {/if}
 
-        {#if review.unverifiable_claims.length}
-          <div>
-            <h4 class="text-xs font-medium uppercase tracking-wider text-[hsl(215,20%,55%)] mb-1">Not covered by the notes</h4>
-            <ul class="flex flex-col gap-1 text-sm text-[hsl(215,20%,70%)]">
-              {#each review.unverifiable_claims as claim, j (j)}
-                <li>? {claim}</li>
-              {/each}
-            </ul>
-          </div>
+        {#if review.corrected.length || review.read_by_meaning.length}
+          <p class="text-xs text-[hsl(215,20%,60%)]">
+            Heard by speech recognition, not counted against you:
+            {#each [...review.corrected, ...review.read_by_meaning] as term, j (j)}
+              <span>{j ? '; ' : ''}heard “{term.heard}”, read as {term.read_as}</span>
+            {/each}
+          </p>
+        {/if}
+
+        {#if review.framework.key_points.length}
+          <details class="text-sm">
+            <summary class="cursor-pointer text-[hsl(215,20%,65%)]">How to answer this question</summary>
+            <div class="mt-2 flex flex-col gap-2">
+              {@render list('A strong answer covers', review.framework.key_points, '•')}
+              {@render list('Red flags', review.framework.red_flags, '✗')}
+              {@render list('Likely follow-ups', review.framework.likely_followups, '?')}
+            </div>
+          </details>
         {/if}
       </article>
     {/each}

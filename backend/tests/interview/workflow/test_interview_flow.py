@@ -10,6 +10,7 @@ import re
 from collections import Counter
 
 from backend.graph.interview.graph import build_interview_graph
+from backend.interview.evaluate import evaluate_interview
 from backend.graph.interview.prompt import DIFFERENT_ASPECT
 from backend.interview.personas import (BRIDGES, CLOSING, HINT_DECLINED, INTRO_QUESTION, NEUTRAL, OPENING, SKIP_ACK,
                                         THANKS)
@@ -367,3 +368,18 @@ def test_a_mis_heard_term_is_corrected_before_the_model_and_kept_with_the_answer
     assert "Candidate's latest message: It takes a lock in PostgreSQL." in interview.prompt()
     assert state["answers"][-1]["text"] == "It takes a lock in PostgreSQL."
     assert state["answers"][-1]["corrections"] == {"post gress": "PostgreSQL"}
+
+
+# --- the report (phase 4's "done when") ----------------------------------------------------------
+
+def test_the_report_reviews_every_graded_answer_and_never_a_hint_repeat_or_skip():
+    interview = at_deep_dive(reply("probe", "Think about locks. What does Beacon do?"), reply("probe", "Why a lock?"))
+    interview.say("Can I get a hint?")
+    interview.say("Can you repeat that?")
+    interview.say("It schedules checks.")
+    interview.say("skip")
+    _, state = interview.say("Let's end the interview.")
+    evaluator = ScriptedModel(['{"answers": [{"index": 1, "band": "ok", "improvement": "Say why."}]}'])
+    report = asyncio.run(evaluate_interview(state["answers"], PLAN, evaluator))
+    assert [r.answer for r in report.reviews] == ["It schedules checks."]  # not the intro, hint, repeat, skip or end
+    assert "Can I get a hint?" not in evaluator.calls[0]["prompt"]
