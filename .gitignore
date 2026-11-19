@@ -44,3 +44,5 @@ backend/tests/google_auth.py
 CLAUDE.md
 .claude/
 graphify-out/
+
+docs/interviewer-mode-features.md

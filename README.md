@@ -52,13 +52,13 @@ START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response
 
 - **Grounded.** Each topic is a whole project document from `knowledge_base/docs/projects/` (or the internship from `experience.yaml`). The interviewer may ask only about those notes or about what you said, and never states a fact outside them (`backend/prompts/interviewer.md`).
 - **The model proposes, code decides.** The model starts each reply with a control line such as `[[decision=probe]]`, which is never spoken. Code in `backend/graph/interview/flow.py` caps follow-ups per topic, climbs a difficulty ladder (explain, then justify, then stress), moves between topics and ends the interview after 10 minutes (`INTERVIEW_MAX_SECONDS`).
-- **Clarifications are free.** "Repeat that", "can I get a hint", "what do you mean", "skip" and "let's end the interview" are recognised by fixed phrases (`backend/interview/intents.py`). Repeat needs no LLM call, and none of them is graded.
+- **Clarifications are free.** "Repeat that", "can I get a hint", "what do you mean", "skip" and "let's end the interview" are recognised by fixed phrases (`backend/interview/intents.py`). Repeat needs no LLM call, and none of them is graded. A request for help in other words ("I want some level of hint now") is labelled `hint_request` by the model in its control tag; code then gives or declines the hint by the persona's rule, and nothing the model wrote after the label is spoken.
 - **Two interviewers** (`backend/interview/personas.py`): *neutral* (calm, hints on request, gentle nudges after 15 s and 45 s of silence) and *strict* (exacting, challenges choices, no hints or nudges, a different voice).
-- **Turn-taking.** `backend/pipeline/turn_taking.py` holds each final transcript before taking the turn: 1.2 s after a complete sentence, 2.5 s after a trailing "and" or "um", 20 s after "let me think". Any new speech cancels the wait. Recruiter mode uses the same controller with shorter holds (300 ms and 800 ms).
+- **Turn-taking.** `backend/pipeline/turn_taking.py` holds each final transcript before taking the turn: 1.2 s after a complete sentence, 2.5 s after a trailing "and" or "um", 20 s after "let me think". Any new speech cancels the wait. Recruiter mode uses the same controller with shorter holds (300 ms and 800 ms). While the agent's audio plays, only words cut it off (`backend/pipeline/barge_in.py`): an "okay", "mm" or a cough does not.
 - **Report.** When the interview ends, one more Groq call scores each answer from 1 to 5 against the notes. It lists what you got right, missed or got wrong, each with a quote from the notes, plus three tips. Code drops any point whose quote is not really in the notes (`backend/interview/evaluate.py`).
 - **Try it in text first.** `POST /internal/turn` with `"mode": "interview"` runs the same interviewer with no speech cost (see [Observability](#observability)).
 
-The audit and design are in [docs/interviewer-mode-plan.md](docs/interviewer-mode-plan.md); what was built, step by step, is in [docs/interviewer-mode-features.md](docs/interviewer-mode-features.md).
+The audit and design are in [docs/interviewer-mode-plan.md](docs/interviewer-mode-plan.md); 
 
 ## Stack
 
@@ -91,7 +91,7 @@ backend/
   prompts/     system prompt, tool descriptions, interviewer and evaluator prompts
   observability/  turn timings, LangSmith redaction
   evals/       eval suites and runners
-  tests/       pytest suite
+  tests/       pytest suite, by area: voice/, recruiter/, shared/, interview/unit/, interview/workflow/; helpers.py holds the shared fakes
 web/           SvelteKit client
 knowledge_base/  structured YAML (projects, skills, links, experience, scheduling) and markdown docs
 docs/          design documents

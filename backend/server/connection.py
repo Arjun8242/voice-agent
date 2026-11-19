@@ -64,7 +64,8 @@ def valid_timezone(name: object) -> str:
 
 
 async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph: Any, executor: Any = None,
-                            interview_graph: Any = None, evaluator: Callable[[list], Awaitable[Any]] | None = None) -> None:
+                            interview_graph: Any = None, evaluator: Callable[[list, list], Awaitable[Any]] | None = None,
+                            interview_topics: list | None = None) -> None:
     """Handle one WebSocket connection from accept() to disconnect.
 
     graph is the compiled agent graph. The connection id is its thread id, so the
@@ -72,7 +73,9 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     executor is the BookingExecutor (booking/execute.py), or None while booking is disabled.
     interview_graph is the mock-interview graph (graph/interview/); a start_interview message switches
     the connection to it for good. None disables interviews.
-    evaluator(answers) -> Report | None writes the end-of-interview report (interview/evaluate.py).
+    evaluator(answers, topics) -> Report | None writes the end-of-interview report (interview/evaluate.py).
+    interview_topics is this connection's interview plan, sent into the graph's state with every turn.
+    shortcut: the same plan for every connection (phase 1); the resume upload replaces it in phase 3.
     """
     await ws.accept()
     print("[server] Client connected")
@@ -173,7 +176,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
                              timings, visitor_timezone=visitor_timezone, ui_action=ui_action,
                              on_booking_execute=start_booking_execute,
                              persona=persona.name if interviewing else "", speaker=persona.voice if interviewing else "",
-                             nudge=nudge)
+                             nudge=nudge, topics=interview_topics if interviewing else None)
             if interviewing:
                 await start_report_if_finished()
         except Exception as err:  # CancelledError is not an Exception: a barge-in ends the task as cancelled
@@ -215,12 +218,13 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         values = (await interview_graph.aget_state({"configurable": {"thread_id": session_id}})).values
         if not values.get("finished") or report_task is not None:  # re-checked: another turn may have started it
             return
-        report_task = asyncio.get_running_loop().create_task(send_report(list(values.get("answers") or [])))
+        answers, topics = list(values.get("answers") or []), list(values.get("topics") or [])
+        report_task = asyncio.get_running_loop().create_task(send_report(answers, topics))
 
-    async def send_report(answers: list) -> None:
+    async def send_report(answers: list, topics: list) -> None:
         await send("interview_report", {"status": "pending"})
         try:
-            report = await evaluator(answers)
+            report = await evaluator(answers, topics)
         except Exception as err:  # a bug in the report must not end silently; CancelledError passes through
             print(f"[report] {type(err).__name__}: {err}")
             report = None

@@ -390,7 +390,9 @@ voice-agent/
     tools/             registry.py, schemas.py, search_projects.py, project_detail.py, skills.py, links.py, check_availability.py, start_booking.py, cancel_booking.py, ...
     gcal/              adapter.py, fake.py, google.py (named gcal so it cannot shadow Python's calendar module)
     observability/     tracing.py, redact.py, timings.py
-    tests/             one file per workflow or section: helpers.py (shared fakes), test_booking.py, test_agent.py, test_spoken_answer.py, test_voice_conversation.py (barge-in and session start), test_knowledge_base.py, test_google_calendar.py, test_observability.py
+    tests/             one folder per area, one file per workflow or section; helpers.py (shared fakes) at the top.
+                       voice/ (turn taking, STT, barge-in and session start, spoken answers), recruiter/ (agent, booking, calendar, knowledge base),
+                       shared/ (/internal/turn, LLM usage, observability), interview/unit/ (one component each), interview/workflow/ (the graph, flow and voice end to end)
     evals/             real LLM, fake calendar. Cases: routing.yaml (right tool and arguments), unanswerable.yaml (refusals, boundaries, invented projects), grounded.yaml (facts from the knowledge base), booking.yaml (multi-turn and the whole flow), smoke.yaml (retrieval only)
                        Runners: run_questions.py (routing, unanswerable, grounded), run_booking.py, run_smoke.py, run_all.py (every suite, writes the report). Targets: thresholds.yaml
                        A judge for groundedness is planned (judge.py) and not built; the grounded and unanswerable suites use code checks until then

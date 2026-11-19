@@ -60,8 +60,9 @@ class TurnRequest(BaseModel):
 INTERVIEW_FIELDS = ("intent", "mode", "decision", "tag_ok", "topic_index", "level", "followups_used", "finished", "answers")
 
 
-async def run_interview_turn(graph, body: TurnRequest) -> dict:
-    result = await run_turn(graph, session_id=body.session_id, text=body.answer or "", persona=body.persona)
+async def run_interview_turn(graph, body: TurnRequest, topics: list) -> dict:
+    result = await run_turn(graph, session_id=body.session_id, text=body.answer or "", persona=body.persona,
+                            topics=topics)
     state = (await graph.aget_state({"configurable": {"thread_id": body.session_id}})).values
     timings = {key: result[key] for key in ("errors", "first_token_ms", "total_ms", "usage")}
     return {"reply": result["reply"], **timings, **{key: state.get(key) for key in INTERVIEW_FIELDS}}
@@ -83,7 +84,8 @@ async def turn(body: TurnRequest, request: Request, API_KEY: str | None = Header
         raise HTTPException(503, "graph is not initialised")
     if body.mode == "interview":
         try:
-            return await asyncio.wait_for(run_interview_turn(graph, body), TURN_TIMEOUT)
+            topics = getattr(request.app.state, "interview_topics", [])
+            return await asyncio.wait_for(run_interview_turn(graph, body, topics), TURN_TIMEOUT)
         except asyncio.TimeoutError:
             raise HTTPException(504, f"turn exceeded {TURN_TIMEOUT}s")
     try:

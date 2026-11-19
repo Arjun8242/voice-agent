@@ -41,13 +41,13 @@ class Interview:
 
     def __init__(self, *replies: list[str], max_seconds: float = 600) -> None:
         self.model, self.clock = ScriptedModel(*replies), FakeClock()
-        self.graph = build_interview_graph(self.model, TOPICS, clock=self.clock, max_seconds=max_seconds)
+        self.graph = build_interview_graph(self.model, clock=self.clock, max_seconds=max_seconds)
 
     def say(self, query: str, **inputs) -> tuple[str, dict]:
         async def run():
             spoken, state = [], {}
             config = {"configurable": {"thread_id": "s1"}}
-            async for mode, chunk in self.graph.astream({"query": query, **inputs}, config, stream_mode=["custom", "values"]):
+            async for mode, chunk in self.graph.astream({"query": query, "topics": TOPICS, **inputs}, config, stream_mode=["custom", "values"]):
                 if mode == "custom":
                     spoken.append(chunk["text"])
                 elif mode == "values":
@@ -86,8 +86,8 @@ def test_two_follow_ups_reach_level_three_and_the_next_question_says_so():
 
 
 def test_the_ladder_stops_at_level_three():
-    advance = create_advance_node(["beacon", "fitai"])
-    state = {"mode": "answer", "decision": "probe", "level": 3, "followups_used": 0, "topic_index": 0}
+    advance = create_advance_node()
+    state = {"topics": TOPICS, "mode": "answer", "decision": "probe", "level": 3, "followups_used": 0, "topic_index": 0}
     assert asyncio.run(advance(state))["level"] == 3
 
 
@@ -216,11 +216,11 @@ def test_a_request_after_the_time_cap_is_still_answered():
 def test_an_answer_whose_turn_was_cut_off_is_not_recorded():
     stall = asyncio.Event()
     model = ScriptedModel(reply("next", OPENING))
-    graph = build_interview_graph(lambda p, s: hang(stall) if model.calls else model(p, s), TOPICS)
+    graph = build_interview_graph(lambda p, s: hang(stall) if model.calls else model(p, s))
 
     async def run():
         config = {"configurable": {"thread_id": "s1"}}
-        async for _ in graph.astream({"query": ""}, config, stream_mode="values"):
+        async for _ in graph.astream({"query": "", "topics": TOPICS}, config, stream_mode="values"):
             pass
         cut = asyncio.create_task(drain(graph.astream({"query": "first try"}, config, stream_mode="values")))
         await asyncio.sleep(0.1)
@@ -258,6 +258,10 @@ def test_an_answer_whose_turn_was_cut_off_is_not_recorded():
 def test_choose_route(state, route, mode):
     update = choose_route({"query": "x", **state}, ["beacon", "fitai"], elapsed_s=0, max_seconds=600)
     assert update["route"] == route and update.get("mode") == mode
+
+
+def test_a_session_without_topics_closes_instead_of_asking():
+    assert choose_route({"intent": "start", "query": ""}, [], elapsed_s=0, max_seconds=600) == {"route": "close"}
 
 
 def test_an_answer_with_no_question_asked_yet_is_not_recorded():

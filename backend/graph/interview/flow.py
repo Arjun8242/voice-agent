@@ -1,4 +1,4 @@
-"""flow.py: the code that moves an interview along. No LLM (docs/interviewer-mode-plan.md §6.3, B7).
+"""flow.py: the code that moves an interview along. No LLM.
 
 steer    before the model call: end, repeat, nudge, move to the next topic, or ask the model
 advance  after the model call: count the follow-up and climb the ladder, or move on; record the answer
@@ -34,12 +34,17 @@ def new_topic(index: int) -> dict:
     return {"topic_index": index, "followups_used": 0, "level": 1}
 
 
-def create_steer_node(topic_ids: list[str], clock: Callable[[], float], max_seconds: float):
+def topic_ids_of(state: dict) -> list[str]:
+    """This session's topic ids, in plan order (the topics are per-session state)."""
+    return [topic["topic_id"] for topic in state.get("topics") or []]
+
+
+def create_steer_node(clock: Callable[[], float], max_seconds: float):
     async def steer_node(state: dict) -> dict:
         first_turn = not state.get("started_at")
         started_at = clock() if first_turn else state["started_at"]
         defaults = {"started_at": started_at, **(new_topic(0) if first_turn else {})}
-        update = {**defaults, **choose_route(state, topic_ids, clock() - started_at, max_seconds)}
+        update = {**defaults, **choose_route(state, topic_ids_of(state), clock() - started_at, max_seconds)}
         if update.get("final_text"):  # a fixed line said before the model's question
             get_stream_writer()({"type": "token", "text": update["final_text"] + " "})
         return update
@@ -49,6 +54,8 @@ def create_steer_node(topic_ids: list[str], clock: Callable[[], float], max_seco
 
 def choose_route(state: dict, topic_ids: list[str], elapsed_s: float, max_seconds: float) -> dict:
     """What this turn does, decided from the state alone."""
+    if not topic_ids:
+        return {"route": "close"}  # no plan for this session: nothing to ask, so close rather than crash
     intent = state.get("intent", "answer")
     persona = get_persona(state.get("persona"))
     pending = pending_answer(state, topic_ids)
@@ -80,7 +87,7 @@ def pending_answer(state: dict, topic_ids: list[str]) -> Answer | None:
     return Answer(topic_id=topic_id, question=state["last_question"], text=state["query"])
 
 
-def create_advance_node(topic_ids: list[str]):
+def create_advance_node():
     async def advance_node(state: dict) -> dict:
         update = record(state)
         if state.get("mode") != "answer":
@@ -92,7 +99,7 @@ def create_advance_node(topic_ids: list[str]):
             level = min(state.get("level", 1) + 1, MAX_LEVEL)
             return {**update, "followups_used": state.get("followups_used", 0) + 1, "level": level}
         index = state.get("topic_index", 0) + 1
-        if index < len(topic_ids):
+        if index < len(topic_ids_of(state)):
             return {**update, **new_topic(index)}
         return {**update, **finish(state)}  # the model said its thanks; the closing line follows
 

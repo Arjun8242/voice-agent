@@ -29,7 +29,8 @@ def api(monkeypatch):
     app.state.interview_model = ScriptedModel(["[[decision=next]]\nWhat does Beacon do?"],
                                               ["[[decision=probe]]\nWhy a lock?"])
     app.state.graph = build_graph(no_retrieval, app.state.recruiter_model, aliases={})
-    app.state.interview_graph = build_interview_graph(app.state.interview_model, TOPICS)
+    app.state.interview_graph = build_interview_graph(app.state.interview_model)
+    app.state.interview_topics = TOPICS
     return TestClient(app), app.state
 
 

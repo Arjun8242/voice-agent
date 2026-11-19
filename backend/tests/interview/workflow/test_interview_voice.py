@@ -12,16 +12,22 @@ from backend.config import TTS_SPEAKER
 from backend.graph.interview.graph import build_interview_graph
 from backend.interview.plan import Topic
 from backend.providers.stt import stt_url
+from backend.tests.voice import test_voice_conversation
 from backend.tests.helpers import ScriptedModel
-from backend.tests.test_voice_conversation import TURN_LOG, GatedModel, connection, fake_tts, run  # noqa: F401 (fake_tts is an autouse fixture)
+from backend.tests.voice.test_voice_conversation import TURN_LOG, GatedModel, connection, fake_tts  # noqa: F401 (fake_tts is an autouse fixture)
 
 TOPICS = [Topic(topic_id="beacon", title="Beacon", text="Beacon takes a Postgres advisory lock.")]
 OPENING = "What does Beacon do?"
 
 
+def run(*args, **kwargs) -> None:
+    """test_voice_conversation's run, with TOPICS as the connection's interview plan."""
+    test_voice_conversation.run(*args, interview_topics=TOPICS, **kwargs)
+
+
 def interviewer(*replies: list[str]) -> tuple[object, ScriptedModel]:
     model = ScriptedModel(["[[decision=next]]\n", OPENING], *replies)
-    return build_interview_graph(model, TOPICS), model
+    return build_interview_graph(model), model
 
 
 def start(h, persona: str | None = "neutral") -> None:
@@ -178,7 +184,7 @@ def test_the_end_button_speaks_the_closing_line_without_the_model():
 def test_the_end_button_cuts_off_a_question_still_being_asked():
     from backend.interview.personas import CLOSING
     model = GatedModel(["[[decision=next]]\n", OPENING], ["[[decision=probe]]\n", "Why a lock? ", asyncio.Event()])
-    graph = build_interview_graph(model, TOPICS)
+    graph = build_interview_graph(model)
 
     async def scenario(h):
         start(h)
@@ -307,8 +313,9 @@ class RecordingEvaluator:
     def __init__(self, result: Report | None | Exception = EMPTY_REPORT, gate: asyncio.Event | None = None) -> None:
         self.result, self.gate, self.calls, self.cancelled = result, gate, [], False
 
-    async def __call__(self, answers: list) -> Report | None:
+    async def __call__(self, answers: list, topics: list) -> Report | None:
         self.calls.append(answers)
+        self.topics = topics
         try:
             if self.gate is not None:
                 await self.gate.wait()
@@ -341,6 +348,7 @@ def test_the_end_button_starts_the_report_with_the_recorded_answers():
         assert all("turnId" not in r for r in reports(h))  # never dropped as a stale turn's message
     run(scenario, GatedModel(), interview_graph=graph, evaluator=evaluator)
     assert evaluator.calls == [[{"topic_id": "beacon", "question": OPENING, "text": "It schedules checks."}]]
+    assert evaluator.topics == TOPICS  # read from the session's state, not fixed at startup
 
 
 def test_a_spoken_end_starts_the_report_too():

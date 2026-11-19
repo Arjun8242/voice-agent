@@ -73,11 +73,13 @@ async def repeat_node(state: dict) -> dict:
     return {"final_text": question}
 
 
-def create_interviewer_node(generate_fn: Callable, topics: list[Topic]):
-    """generate_fn(prompt, system_instruction) -> async iterator of text pieces (rag/llm.py stream_text)."""
+def create_interviewer_node(generate_fn: Callable):
+    """generate_fn(prompt, system_instruction) -> async iterator of text pieces (rag/llm.py stream_text).
+    steer routes here only when the session has topics, so state["topics"] is never empty."""
 
     async def interviewer_node(state: dict) -> dict:
         write = get_stream_writer()
+        topics: list[Topic] = state["topics"]
         index = min(state.get("topic_index", 0), len(topics) - 1)
         next_title = topics[index + 1]["title"] if index + 1 < len(topics) else None
         message = build_turn_message(state, topics[index], get_persona(state.get("persona")), next_title)

@@ -16,8 +16,8 @@ except (ImportError, ModuleNotFoundError):
     from observability.redact import tracing_callbacks
 
 async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str = "", visitor_timezone: str = "",
-                      ui_action: dict | None = None, persona: str = "", nudge: int | None = None
-                      ) -> AsyncIterator[tuple[str, object]]:
+                      ui_action: dict | None = None, persona: str = "", nudge: int | None = None,
+                      topics: list | None = None) -> AsyncIterator[tuple[str, object]]:
     """Yield ("custom", event) as the graph emits them and ("values", state) after each step.
 
     interrupted_reply: what the visitor heard of the previous answer before cutting in.
@@ -25,6 +25,7 @@ async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str 
     ui_action: a click on a booking card ({action, payload}); text is then "".
     persona: interview graph only, the interviewer persona; saved in its state on the first turn.
     nudge: interview graph only, the index of the nudge to say after the candidate stayed silent.
+    topics: interview graph only, this session's plan; sent every turn and saved in its state.
     """
 
     config = {"configurable": {"thread_id": session_id}}
@@ -40,13 +41,15 @@ async def stream_turn(graph, session_id: str, text: str, interrupted_reply: str 
         inputs["persona"] = persona
     if nudge is not None:
         inputs["nudge"] = nudge
+    if topics:
+        inputs["topics"] = topics
 
     async for mode, chunk in graph.astream(inputs, config, stream_mode =["custom", "values"]):
         yield mode, chunk
 
 
 async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = None, visitor_timezone: str = "",
-                   persona: str = "") -> dict:
+                   persona: str = "", topics: list | None = None) -> dict:
     start = time.perf_counter()
     first_token_ms = None
     retrieval: dict ={}
@@ -54,7 +57,8 @@ async def run_turn(graph, session_id: str, text: str, ui_action: dict | None = N
     tokens = empty_totals()
 
     async for mode, chunk in stream_turn(graph, session_id = session_id, text = text, ui_action = ui_action,
-                                         visitor_timezone = visitor_timezone, persona = persona):
+                                         visitor_timezone = visitor_timezone, persona = persona,
+                                         topics = topics):
 
         if mode == "custom" and chunk.get("type") == "token" and first_token_ms is None:
             first_token_ms = round((time.perf_counter() - start)*1000, 1)

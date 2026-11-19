@@ -1,13 +1,13 @@
 """state.py: the per-session state of the interview graph (docs/interviewer-mode-plan.md §5.6).
 
 Persisted per session by the checkpointer (thread_id = session_id):
-    messages, persona, topic_index, level, followups_used, last_question, started_at, finished, answers
+    topics, profile_summary, messages, persona, topic_index, level, followups_used, last_question, started_at, finished, answers
 Reset at the start of every turn by the interview ingest node:
     intent, mode, route, pending_answer, final_text, decision, tag_ok, errors, interrupted_reply,
     nudge, nudge_index
 
-The topics themselves are not stored here: they are the same for every session (interview/plan.py),
-so the graph keeps them and the state holds only topic_index.
+The topics are stored here, not in the graph: each candidate gets their own plan, so one compiled
+graph serves every session. The server sends them as an input with every turn.
 
 Only messages has a reducer (add_messages), as in graph/state.py: every other field is replaced
 by what a node returns, so ingest's empty values really reset it.
@@ -19,6 +19,8 @@ from typing import Annotated, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
+
+from backend.interview.plan import Topic
 
 
 class Answer(TypedDict):
@@ -36,6 +38,8 @@ class InterviewState(TypedDict, total=False):
     visitor_timezone: str  # input: sent by the shared runner; unused by the interview
     nudge: int | None  # input: the candidate stayed silent; which nudge to say (interview/personas.py)
     persona: str  # input on the first turn: "neutral" or "strict" (interview/personas.py); persisted
+    topics: list[Topic]  # input with every turn: this session's plan, in order; persisted
+    profile_summary: str  # input: a short summary of the candidate's resume (filled from phase 3); persisted
     messages: Annotated[list[AnyMessage], add_messages]
     topic_index: int  # which topic of the plan is being discussed
     level: int  # difficulty 1-3 on the current topic: 1 explain, 2 justify, 3 stress

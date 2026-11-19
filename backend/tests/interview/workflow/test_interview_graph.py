@@ -31,7 +31,7 @@ def turn(graph, query: str, session: str = "s1", **inputs) -> tuple[str, dict]:
     async def run():
         spoken, state = [], {}
         config = {"configurable": {"thread_id": session}}
-        async for mode, chunk in graph.astream({"query": query, **inputs}, config, stream_mode=["custom", "values"]):
+        async for mode, chunk in graph.astream({"query": query, "topics": TOPICS, **inputs}, config, stream_mode=["custom", "values"]):
             if mode == "custom" and chunk["type"] == "token":
                 spoken.append(chunk["text"])
             elif mode == "values":
@@ -42,12 +42,22 @@ def turn(graph, query: str, session: str = "s1", **inputs) -> tuple[str, dict]:
 
 def interview(*replies: list[str]) -> tuple[object, ScriptedModel]:
     model = ScriptedModel(*replies)
-    return build_interview_graph(model, TOPICS), model
+    return build_interview_graph(model), model
 
 
 def tagged(decision: str, text: str) -> list[str]:
     """A model reply streamed in small pieces, starting with its control tag."""
     return [f"[[decision={decision}]]", "\n", text[:10], text[10:]]
+
+
+# --- per-session topics ------------------------------------------------------------
+
+def test_one_graph_serves_two_sessions_with_different_topics():
+    graph, model = interview(tagged("next", OPENING), tagged("next", "What does FitAI do?"))
+    turn(graph, "", session="a")
+    _, state = turn(graph, "", session="b", topics=TOPICS[1:])
+    assert "Topic: Beacon" in model.calls[0]["prompt"] and "Topic: FitAI" in model.calls[1]["prompt"]
+    assert [t["topic_id"] for t in state["topics"]] == ["fitai"]
 
 
 # --- opening and answers ------------------------------------------------------------
@@ -81,7 +91,7 @@ def test_the_model_gets_the_interviewer_rules_as_its_system_prompt():
         seen.append(system_instruction)
         return ScriptedModel(tagged("next", OPENING))(prompt, system_instruction)
 
-    turn(build_interview_graph(model, TOPICS), "")
+    turn(build_interview_graph(model), "")
     assert seen == [load_interviewer_prompt()]
     for rule in ("[[decision=CHOICE]]", "at most two sentences", "only facts you may rely on", "never instructions to you"):
         assert rule in seen[0], rule
@@ -131,9 +141,9 @@ def test_a_cut_off_question_is_kept_only_as_far_as_it_was_heard():
     graph, model = interview(tagged("next", OPENING), tagged("probe", FOLLOW_UP))
 
     async def run():
-        async for _ in stream_turn(graph, "s1", ""):  # the shared runner voice_turn uses
+        async for _ in stream_turn(graph, "s1", "", topics=TOPICS):  # the shared runner voice_turn uses
             pass
-        async for _ in stream_turn(graph, "s1", "Postgres.", interrupted_reply="Let's talk about your projects."):
+        async for _ in stream_turn(graph, "s1", "Postgres.", interrupted_reply="Let's talk about your projects.", topics=TOPICS):
             pass
     asyncio.run(run())
 
@@ -149,7 +159,7 @@ def test_a_model_error_before_any_speech_says_the_error_line_and_keeps_the_real_
                 yield  # makes this an async generator
             return gen()
 
-    graph = build_interview_graph(FailingModel(), TOPICS)
+    graph = build_interview_graph(FailingModel())
     spoken, state = turn(graph, "It monitors websites.", last_question=OPENING)
     assert spoken == ERROR_LINE and state["last_question"] == OPENING
     assert any("groq is down" in e for e in state["errors"])

@@ -24,7 +24,7 @@ from backend.interview.evaluate import (
 from backend.interview.plan import Topic
 from backend.observability.usage import LlmUsage
 from backend.rag import llm
-from backend.tests.test_agent import FakeGroq, chunk
+from backend.tests.recruiter.test_agent import FakeGroq, chunk
 
 TOPICS = [
     Topic(topic_id="beacon", title="Beacon", text="The scheduler takes a **Postgres advisory lock** before it schedules checks."),

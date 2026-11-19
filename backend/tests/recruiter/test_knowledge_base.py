@@ -235,7 +235,7 @@ def test_faq_question_without_answer_fails(kb):
 
 # --- the real knowledge base ------------------------------------------------------------
 
-REAL_KB = Path(__file__).resolve().parents[2] / "knowledge_base"
+REAL_KB = Path(__file__).resolve().parents[3] / "knowledge_base"
 
 
 @pytest.mark.skipif(not REAL_KB.exists(), reason="knowledge_base/ not present")

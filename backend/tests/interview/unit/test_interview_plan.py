@@ -9,7 +9,7 @@ from backend.interview.plan import build_plan
 from backend.tests.helpers import make_kb, project
 from backend.tools.kb_data import load_kb_data
 
-KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
+KB_DIR = Path(__file__).resolve().parents[4] / "knowledge_base"
 
 
 def test_one_topic_per_project_in_kb_order_then_the_experience():

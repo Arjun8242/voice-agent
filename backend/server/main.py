@@ -58,10 +58,10 @@ async def lifespan(app: FastAPI):
     app.state.graph = build_graph(
         retrieve_fn=retrieve, generate_fn=stream_text, aliases=project_aliases(), registry=registry, gate=gate,
     )
-    topics = build_plan(kb)
-    app.state.interview_graph = build_interview_graph(stream_text, topics)
-    app.state.evaluator = partial(evaluate_interview, topics=topics,
-                                  generate_fn=partial(stream_text, max_tokens=EVALUATOR_MAX_TOKENS))
+    # shortcut: every session gets Arjun's KB plan until the resume upload (phase 3) builds one per session
+    app.state.interview_topics = build_plan(kb)
+    app.state.interview_graph = build_interview_graph(stream_text)
+    app.state.evaluator = partial(evaluate_interview, generate_fn=partial(stream_text, max_tokens=EVALUATOR_MAX_TOKENS))
     app.state.tts_client = create_tts_client()
     await asyncio.gather(
         warm_llm(),
@@ -83,4 +83,5 @@ async def health_check() -> dict:
 @app.websocket("/")
 async def websocket_endpoint(ws: WebSocket) -> None:
     await handle_connection(ws, ws.app.state.tts_client, ws.app.state.graph, ws.app.state.executor,
-                            interview_graph=ws.app.state.interview_graph, evaluator=ws.app.state.evaluator)
+                            interview_graph=ws.app.state.interview_graph, evaluator=ws.app.state.evaluator,
+                            interview_topics=ws.app.state.interview_topics)

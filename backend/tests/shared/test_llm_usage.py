@@ -14,7 +14,7 @@ from backend.observability.timings import report
 from backend.observability.usage import LlmUsage, add_usage, empty_totals
 from backend.rag import llm
 from backend.tests.helpers import ScriptedModel, no_retrieval
-from backend.tests.test_agent import FakeGroq, chunk
+from backend.tests.recruiter.test_agent import FakeGroq, chunk
 
 USAGE = LlmUsage(input_tokens=2500, output_tokens=180, cached_tokens=2000, reasoning_tokens=60)
 
@@ -75,15 +75,15 @@ def test_the_recruiter_graph_counts_usage_and_never_speaks_it():
 
 def test_the_interview_graph_counts_usage_and_never_speaks_it():
     topics = [Topic(topic_id="beacon", title="Beacon", text="Notes.")]
-    graph = build_interview_graph(ScriptedModel(["[[decision=next]]\nWhat does Beacon do?", USAGE]), topics)
-    result = asyncio.run(run_turn(graph, "s1", ""))
+    graph = build_interview_graph(ScriptedModel(["[[decision=next]]\nWhat does Beacon do?", USAGE]))
+    result = asyncio.run(run_turn(graph, "s1", "", topics=topics))
     assert result["reply"] == "What does Beacon do?" and result["usage"]["input_tokens"] == 2500
 
 
 def test_a_turn_without_a_model_call_reports_zero():
     topics = [Topic(topic_id="beacon", title="Beacon", text="Notes.")]
-    graph = build_interview_graph(ScriptedModel(), topics)
-    result = asyncio.run(run_turn(graph, "s1", "Let's end the interview."))
+    graph = build_interview_graph(ScriptedModel())
+    result = asyncio.run(run_turn(graph, "s1", "Let's end the interview.", topics=topics))
     assert result["usage"] == empty_totals()
 
 
