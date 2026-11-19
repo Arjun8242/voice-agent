@@ -1,12 +1,12 @@
 """nodes.py: the interview graph's nodes. Only the interviewer node calls the LLM.
 
-ingest       record the turn, classify its intent, reset per-turn fields (no LLM)
+ingest       correct mis-heard terms, record the turn, classify its intent, reset per-turn fields (no LLM)
 repeat       "can you repeat that": replay the last question word for word (no LLM)
 nudge        the candidate stayed silent: say the persona's fixed nudge line (no LLM)
 interviewer  one streamed model call; the control tag is stripped before anything is spoken.
              A tag saying hint_request on an answer stops the reply and sends the turn back to steer.
 response     save what the interviewer said to the history
-steer, advance and close (no LLM) are in flow.py.
+steer, move, advance and close (no LLM) are in flow.py.
 
 Text leaves the graph as {"type": "token"} custom events, as in the recruiter graph, so
 pipeline/voice_turn.py speaks it without knowing which graph ran.
@@ -24,6 +24,7 @@ from langgraph.config import get_stream_writer
 from backend.graph.interview.prompt import build_turn_message, load_interviewer_prompt
 from backend.graph.interview.tag import HINT_REQUEST, TagBuffer
 from backend.graph.nodes.ingest import heard_history
+from backend.interview.glossary import normalize_terms
 from backend.interview.intents import classify_intent
 from backend.interview.personas import get_persona
 from backend.interview.plan import Topic
@@ -34,7 +35,7 @@ ERROR_LINE = "Sorry, I lost my train of thought. Could you say that again?"
 
 async def ingest_node(state: dict) -> dict:
     """An empty query is the request for the opening question, or a nudge: neither adds a candidate message."""
-    query = (state.get("query") or "").strip()
+    query, corrections = normalize_terms((state.get("query") or "").strip(), state.get("glossary") or [])
     nudge = state.get("nudge")
     messages = heard_history(state.get("messages") or [], state.get("interrupted_reply") or "")
     if query:
@@ -48,6 +49,8 @@ async def ingest_node(state: dict) -> dict:
         "intent": "nudge" if nudge is not None else classify_intent(query) if query else "start",
         "mode": "",
         "route": "",
+        "decisions": [],
+        "corrections": corrections,
         "pending_answer": None,
         "final_text": "",
         "decision": "",
@@ -80,9 +83,8 @@ def create_interviewer_node(generate_fn: Callable):
     async def interviewer_node(state: dict) -> dict:
         write = get_stream_writer()
         topics: list[Topic] = state["topics"]
-        index = min(state.get("topic_index", 0), len(topics) - 1)
-        next_title = topics[index + 1]["title"] if index + 1 < len(topics) else None
-        message = build_turn_message(state, topics[index], get_persona(state.get("persona")), next_title)
+        topic = topics[min(state.get("topic_index", 0), len(topics) - 1)]
+        message = build_turn_message(state, topic, get_persona(state.get("persona")))
         tags, spoken, errors = TagBuffer(), "", list(state.get("errors", []))
         watch_for_hint = state.get("mode") == "answer"  # in hint mode the model is meant to help
         try:

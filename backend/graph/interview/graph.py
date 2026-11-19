@@ -1,6 +1,7 @@
 """graph.py: wire the interview graph (docs/interviewer-mode-plan.md §6.3).
 
     START -> ingest -> steer --> interviewer -> advance --> response -> END
+                          |---> move --------------------'          (code asks the next seed question; no LLM)
                           |---> repeat ------------------'          (replay the last question; no LLM)
                           |---> nudge -------------------'          (the candidate stayed silent; no LLM)
                           '---> close -------------------'          (end, time cap, past the last topic; no LLM)
@@ -26,7 +27,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from backend.config import INTERVIEW_MAX_SECONDS
-from backend.graph.interview.flow import create_advance_node, create_close_node, create_steer_node
+from backend.graph.interview.flow import create_advance_node, create_close_node, create_move_node, create_steer_node
 from backend.graph.interview.nodes import create_interviewer_node, ingest_node, nudge_node, repeat_node, response_node
 from backend.graph.interview.state import InterviewState
 
@@ -36,6 +37,7 @@ def build_interview_graph(generate_fn: Callable, checkpointer=None,
     graph = StateGraph(InterviewState)
     graph.add_node("ingest", ingest_node)
     graph.add_node("steer", create_steer_node(clock, max_seconds))
+    graph.add_node("move", create_move_node())
     graph.add_node("repeat", repeat_node)
     graph.add_node("nudge", nudge_node)
     graph.add_node("interviewer", create_interviewer_node(generate_fn))
@@ -45,10 +47,11 @@ def build_interview_graph(generate_fn: Callable, checkpointer=None,
 
     graph.add_edge(START, "ingest")
     graph.add_edge("ingest", "steer")
-    graph.add_conditional_edges("steer", lambda state: state["route"], ["interviewer", "repeat", "close", "nudge"])
+    graph.add_conditional_edges("steer", lambda state: state["route"], ["interviewer", "move", "repeat", "close", "nudge"])
     graph.add_conditional_edges("interviewer", lambda state: "steer" if state.get("route") == "steer" else "advance",
                                 ["steer", "advance"])
     graph.add_edge("advance", "response")
+    graph.add_edge("move", "response")
     graph.add_edge("repeat", "response")
     graph.add_edge("nudge", "response")
     graph.add_edge("close", "response")

@@ -1,10 +1,10 @@
 """state.py: the per-session state of the interview graph (docs/interviewer-mode-plan.md §5.6).
 
 Persisted per session by the checkpointer (thread_id = session_id):
-    topics, profile_summary, messages, persona, topic_index, level, followups_used, last_question, started_at, finished, answers
+    topics, profile_summary, glossary, messages, persona, topic_index, level, followups_used, last_question, started_at, finished, answers
 Reset at the start of every turn by the interview ingest node:
-    intent, mode, route, pending_answer, final_text, decision, tag_ok, errors, interrupted_reply,
-    nudge, nudge_index
+    intent, mode, route, decisions, pending_answer, final_text, decision, tag_ok, errors, interrupted_reply,
+    nudge, nudge_index, corrections
 
 The topics are stored here, not in the graph: each candidate gets their own plan, so one compiled
 graph serves every session. The server sends them as an input with every turn.
@@ -15,7 +15,7 @@ by what a node returns, so ingest's empty values really reset it.
 
 from __future__ import annotations
 
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
@@ -28,7 +28,8 @@ class Answer(TypedDict):
 
     topic_id: str
     question: str  # the interviewer's question as it was asked
-    text: str  # the candidate's answer
+    text: str  # the candidate's answer, after glossary normalisation
+    corrections: NotRequired[dict[str, str]]  # heard -> glossary term, only when code corrected a term
 
 
 class InterviewState(TypedDict, total=False):
@@ -40,18 +41,21 @@ class InterviewState(TypedDict, total=False):
     persona: str  # input on the first turn: "neutral" or "strict" (interview/personas.py); persisted
     topics: list[Topic]  # input with every turn: this session's plan, in order; persisted
     profile_summary: str  # input: a short summary of the candidate's resume (filled from phase 3); persisted
+    glossary: list[str]  # input: every tech name from the resume and JD, for mis-heard terms (phase 3); persisted
     messages: Annotated[list[AnyMessage], add_messages]
     topic_index: int  # which topic of the plan is being discussed
-    level: int  # difficulty 1-3 on the current topic: 1 explain, 2 justify, 3 stress
-    followups_used: int  # follow-up questions asked on the current topic
+    level: int  # rung of the current topic's follow-up ladder, 1 up to its max_level (prompt.py LADDERS)
+    followups_used: int  # follow-up questions asked on the current topic; its seed question is not one
     started_at: float  # clock time of the first turn, for the time cap
     finished: bool  # the closing line was spoken; every later turn gets it again
     answers: list[Answer]  # every answer so far, recorded only when its turn completes
     last_question: str  # the interviewer's last spoken turn, replayed on "repeat that" without the LLM
     intent: str  # this turn: answer, repeat, hint, rephrase, skip, end, "start" for the opening, or "nudge"; an answer becomes hint when the model labels it hint_request
     nudge_index: int | None  # this turn's nudge, copied from the input so the input can be cleared
-    mode: str  # what the interviewer does: start, answer, hint, rephrase, new_topic or skip (prompt.py)
-    route: str  # the steer node's choice: interviewer, repeat, close or nudge; "steer" when the interviewer hands a hint request back
+    mode: str  # what the interviewer model does: answer, hint or rephrase (prompt.py)
+    route: str  # the steer node's choice: interviewer, move, repeat, close or nudge; "steer" when the interviewer hands a hint request back
+    decisions: list[str]  # what the model may choose after this answer (pacing.py); set by steer
+    corrections: dict[str, str]  # this turn's glossary corrections, heard -> term (interview/glossary.py)
     pending_answer: Answer | None  # this turn's answer, moved into answers once the turn completes
     final_text: str  # what the interviewer said this turn (tag removed)
     decision: str  # the model's control-tag decision this turn; "next" when the tag was missing

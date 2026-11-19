@@ -10,14 +10,15 @@ import sys
 
 from backend.config import TTS_SPEAKER
 from backend.graph.interview.graph import build_interview_graph
-from backend.interview.plan import Topic
+from backend.interview.personas import OPENING
+from backend.interview.plan import make_topic
 from backend.providers.stt import stt_url
 from backend.tests.voice import test_voice_conversation
 from backend.tests.helpers import ScriptedModel
 from backend.tests.voice.test_voice_conversation import TURN_LOG, GatedModel, connection, fake_tts  # noqa: F401 (fake_tts is an autouse fixture)
 
-TOPICS = [Topic(topic_id="beacon", title="Beacon", text="Beacon takes a Postgres advisory lock.")]
-OPENING = "What does Beacon do?"
+SEED = "What does Beacon do?"
+TOPICS = [make_topic("deep_dive", "beacon", "Beacon", "Beacon takes a Postgres advisory lock.", SEED)]
 
 
 def run(*args, **kwargs) -> None:
@@ -26,7 +27,7 @@ def run(*args, **kwargs) -> None:
 
 
 def interviewer(*replies: list[str]) -> tuple[object, ScriptedModel]:
-    model = ScriptedModel(["[[decision=next]]\n", OPENING], *replies)
+    model = ScriptedModel(*replies)  # the opening is spoken by code, never the model
     return build_interview_graph(model), model
 
 
@@ -52,10 +53,10 @@ def test_start_interview_asks_the_opening_question_without_any_speech():
     async def scenario(h):
         start(h)
         await h.answered(1)
-        assert [m["text"] for m in h.of_type("assistant_text")] == [OPENING]
+        assert [m["text"].strip() for m in h.of_type("assistant_text")] == [OPENING, SEED]  # one message per sentence
         assert h.of_type("transcript_final") == []  # nobody spoke: the interviewer opens
     run(scenario, recruiter, interview_graph=graph)
-    assert len(model.calls) == 1 and recruiter.prompts == []
+    assert model.calls == [] and recruiter.prompts == []
 
 
 def test_the_strict_persona_speaks_with_its_own_voice(monkeypatch):
@@ -66,7 +67,7 @@ def test_the_strict_persona_speaks_with_its_own_voice(monkeypatch):
         start(h, "strict")
         await h.answered(1)
     run(scenario, GatedModel(), interview_graph=graph)
-    assert speakers == ["shubh"]
+    assert set(speakers) == {"shubh"}
 
 
 def test_an_unknown_persona_gets_the_neutral_voice(monkeypatch):
@@ -77,7 +78,7 @@ def test_an_unknown_persona_gets_the_neutral_voice(monkeypatch):
         start(h, "pirate")
         await h.answered(1)
     run(scenario, GatedModel(), interview_graph=graph)
-    assert speakers == [TTS_SPEAKER]
+    assert set(speakers) == {TTS_SPEAKER}
 
 
 def test_recruiter_turns_keep_the_default_voice(monkeypatch):
@@ -104,7 +105,7 @@ def test_answers_go_to_the_interview_graph_after_the_longer_interview_hold():
         await h.answered(2)
         assert [m["text"] for m in h.of_type("assistant_text")][-1] == "Why a lock?"
     run(scenario, GatedModel(), interview_graph=graph)
-    assert "Candidate's latest message: It schedules checks." in model.calls[1]["prompt"]
+    assert "Candidate's latest message: It schedules checks." in model.calls[0]["prompt"]
 
 
 def test_start_interview_sets_the_interview_stt_silence():
@@ -127,7 +128,7 @@ def test_a_second_start_interview_is_ignored():
         await asyncio.sleep(0.2)
         assert len(h.of_type("done")) == 1
     run(scenario, GatedModel(), interview_graph=graph)
-    assert len(model.calls) == 1
+    assert model.calls == []
 
 
 def test_start_interview_without_an_interview_graph_does_nothing():
@@ -148,7 +149,7 @@ def test_card_clicks_are_ignored_during_an_interview():
         await asyncio.sleep(0.3)
         assert len(h.of_type("done")) == 1  # no second turn
     run(scenario, GatedModel(), interview_graph=graph)
-    assert len(model.calls) == 1
+    assert model.calls == []
 
 
 def test_interview_turns_are_logged_with_their_mode():
@@ -178,12 +179,12 @@ def test_the_end_button_speaks_the_closing_line_without_the_model():
         await h.answered(2)
         assert [m["text"] for m in h.of_type("assistant_text")][-1] == CLOSING
     run(scenario, GatedModel(), interview_graph=graph)
-    assert len(model.calls) == 1
+    assert model.calls == []
 
 
 def test_the_end_button_cuts_off_a_question_still_being_asked():
     from backend.interview.personas import CLOSING
-    model = GatedModel(["[[decision=next]]\n", OPENING], ["[[decision=probe]]\n", "Why a lock? ", asyncio.Event()])
+    model = GatedModel(["[[decision=probe]]\n", "Why a lock? ", asyncio.Event()])
     graph = build_interview_graph(model)
 
     async def scenario(h):
@@ -191,14 +192,14 @@ def test_the_end_button_cuts_off_a_question_still_being_asked():
         await h.answered(1)
         h.ended(1)
         await h.say("It schedules checks.")
-        await h.spoken(2)  # "Why a lock?" is being spoken and the model is still going
+        await h.spoken(3)  # the opening's two sentences, then "Why a lock?" while the model is still going
         end(h)
         await h.until(lambda: h.of_type("interrupted"), "the question to be cut off")
         await h.answered(3)
         assert h.of_type("interrupted")[0]["turnId"] == 2
         assert [m["text"] for m in h.of_type("assistant_text") if m["turnId"] == 3] == [CLOSING]
     run(scenario, GatedModel(), interview_graph=graph)
-    assert len(model.prompts) == 2  # the closing line needed no model call
+    assert len(model.prompts) == 1  # the closing line needed no model call
 
 
 def test_the_end_button_outside_an_interview_does_nothing():
@@ -242,7 +243,7 @@ def test_silence_after_the_question_gets_both_nudges_and_no_more(monkeypatch):
         await asyncio.sleep(1.0)
         assert len(h.of_type("done")) == 3
     run(scenario, GatedModel(), interview_graph=graph)
-    assert len(model.calls) == 1  # nudges never call the model
+    assert model.calls == []  # nudges never call the model
 
 
 def test_speaking_before_the_nudge_cancels_it(monkeypatch):
@@ -347,7 +348,7 @@ def test_the_end_button_starts_the_report_with_the_recorded_answers():
         assert reports(h)[1]["report"]["tips"] == ["Name the component first."]
         assert all("turnId" not in r for r in reports(h))  # never dropped as a stale turn's message
     run(scenario, GatedModel(), interview_graph=graph, evaluator=evaluator)
-    assert evaluator.calls == [[{"topic_id": "beacon", "question": OPENING, "text": "It schedules checks."}]]
+    assert evaluator.calls == [[{"topic_id": "deep_dive:beacon", "question": SEED, "text": "It schedules checks."}]]
     assert evaluator.topics == TOPICS  # read from the session's state, not fixed at startup
 
 

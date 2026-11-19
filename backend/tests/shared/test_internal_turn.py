@@ -12,12 +12,12 @@ from fastapi.testclient import TestClient
 from backend.graph.api import router
 from backend.graph.graph import build_graph
 from backend.graph.interview.graph import build_interview_graph
-from backend.interview.personas import CLOSING, STRICT
-from backend.interview.plan import Topic
+from backend.interview.personas import CLOSING, OPENING, STRICT
+from backend.interview.plan import make_topic
 from backend.tests.helpers import ScriptedModel, no_retrieval
 
 KEY = "test-key"
-TOPICS = [Topic(topic_id="beacon", title="Beacon", text="Beacon takes a Postgres advisory lock.")]
+TOPICS = [make_topic("deep_dive", "beacon", "Beacon", "Beacon takes a Postgres advisory lock.", "What does Beacon do?")]
 
 
 @pytest.fixture
@@ -26,8 +26,7 @@ def api(monkeypatch):
     app = FastAPI()
     app.include_router(router)
     app.state.recruiter_model = ScriptedModel(["Beacon is a monitor."])
-    app.state.interview_model = ScriptedModel(["[[decision=next]]\nWhat does Beacon do?"],
-                                              ["[[decision=probe]]\nWhy a lock?"])
+    app.state.interview_model = ScriptedModel(["[[decision=probe]]\nWhy a lock?"])  # the opening is spoken by code
     app.state.graph = build_graph(no_retrieval, app.state.recruiter_model, aliases={})
     app.state.interview_graph = build_interview_graph(app.state.interview_model)
     app.state.interview_topics = TOPICS
@@ -70,13 +69,14 @@ def test_recruiter_requests_work_as_before(api):
 def test_an_interview_runs_in_text_with_its_flow_fields(api):
     client, state = api
     opening = post(client, {"session_id": "iv", "mode": "interview", "persona": "strict"}).json()
-    assert (opening["reply"], opening["intent"], opening["topic_index"], opening["level"]) == ("What does Beacon do?", "start", 0, 1)
+    assert (opening["reply"], opening["intent"], opening["topic_index"], opening["level"]) == (
+        f"{OPENING} What does Beacon do?", "start", 0, 1)
 
     answer = post(client, {"session_id": "iv", "mode": "interview", "answer": "It monitors sites."}).json()
     assert (answer["reply"], answer["decision"], answer["tag_ok"]) == ("Why a lock?", "probe", True)
     assert (answer["followups_used"], answer["level"]) == (1, 2)
-    assert answer["answers"] == [{"topic_id": "beacon", "question": "What does Beacon do?", "text": "It monitors sites."}]
-    assert STRICT.prompt_fragment in state.interview_model.calls[1]["prompt"]  # the persona of the first turn stuck
+    assert answer["answers"] == [{"topic_id": "deep_dive:beacon", "question": "What does Beacon do?", "text": "It monitors sites."}]
+    assert STRICT.prompt_fragment in state.interview_model.calls[0]["prompt"]  # the persona of the first turn stuck
     assert state.recruiter_model.calls == []
 
 

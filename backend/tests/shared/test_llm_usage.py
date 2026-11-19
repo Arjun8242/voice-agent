@@ -9,7 +9,7 @@ from types import SimpleNamespace as NS
 from backend.graph.graph import build_graph
 from backend.graph.interview.graph import build_interview_graph
 from backend.graph.runner import run_turn
-from backend.interview.plan import Topic
+from backend.interview.plan import make_topic
 from backend.observability.timings import report
 from backend.observability.usage import LlmUsage, add_usage, empty_totals
 from backend.rag import llm
@@ -74,14 +74,15 @@ def test_the_recruiter_graph_counts_usage_and_never_speaks_it():
 
 
 def test_the_interview_graph_counts_usage_and_never_speaks_it():
-    topics = [Topic(topic_id="beacon", title="Beacon", text="Notes.")]
-    graph = build_interview_graph(ScriptedModel(["[[decision=next]]\nWhat does Beacon do?", USAGE]))
-    result = asyncio.run(run_turn(graph, "s1", "", topics=topics))
-    assert result["reply"] == "What does Beacon do?" and result["usage"]["input_tokens"] == 2500
+    topics = [make_topic("deep_dive", "beacon", "Beacon", "Notes.", "What does Beacon do?")]
+    graph = build_interview_graph(ScriptedModel(["[[decision=probe]]\nWhy a lock?", USAGE]))
+    asyncio.run(run_turn(graph, "s1", "", topics=topics))  # the opening: code, no model call
+    result = asyncio.run(run_turn(graph, "s1", "It schedules checks."))
+    assert result["reply"] == "Why a lock?" and result["usage"]["input_tokens"] == 2500
 
 
 def test_a_turn_without_a_model_call_reports_zero():
-    topics = [Topic(topic_id="beacon", title="Beacon", text="Notes.")]
+    topics = [make_topic("deep_dive", "beacon", "Beacon", "Notes.", "What does Beacon do?")]
     graph = build_interview_graph(ScriptedModel())
     result = asyncio.run(run_turn(graph, "s1", "Let's end the interview.", topics=topics))
     assert result["usage"] == empty_totals()

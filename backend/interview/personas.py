@@ -1,12 +1,13 @@
 """personas.py: how the interviewer behaves, as data, plus the fixed lines it speaks without the LLM.
 
 A persona differs in behaviour rules, not adjectives (docs/interviewer-mode-plan.md §4.1 G):
-how many follow-ups per topic, which follow-up decisions it may take, whether it gives hints, and
-what it says when the candidate goes quiet, and which TTS voice speaks. Two personas: "neutral"
+which follow-up decisions it may take, whether it gives hints, what it says when the candidate goes
+quiet, and which TTS voice speaks. How many questions a topic gets is the topic's budget
+(interview/plan.py), the same for every persona. Two personas: "neutral"
 (the default) and "strict", which merges the plan's strict and challenging columns. Adding another
 is a new entry in PERSONAS; the graph and the connection read only these fields.
 
-Fixed lines (nudges, closing) never go through the LLM: they cost no tokens and can never say
+Fixed lines (opening, intro, bridges, nudges, closing) never go through the LLM: they cost no tokens and can never say
 anything odd. Keep each to one or two short sentences, since every character is paid TTS.
 """
 
@@ -19,15 +20,26 @@ from backend.config import TTS_SPEAKER
 Decision = str  # "probe", "example", "challenge", "next", "clarify_back"; the graph enforces the list
 ALL_DECISIONS: tuple[Decision, ...] = ("probe", "example", "challenge", "next", "clarify_back")
 
+OPENING = "Hi, I'll be your interviewer today."
+INTRO_QUESTION = "Let's start: walk me through your background."
+THANKS = "Thanks."  # said before code moves to the next topic when the model was not called
+SKIP_ACK = "That's fine."
 CLOSING = "That's all the questions I have. Thank you for your time."
 HINT_DECLINED = "No hints in this round. Let's go to the next question."  # personas without hints
+
+# Said when the next topic starts a new stage, before its seed question. Keyed by the new stage's kind.
+BRIDGES: dict[str, str] = {
+    "deep_dive": "Let's go into your experience.",
+    "technical": "Let's move to the technical part.",
+    "behavioral": "Now a few questions about how you work with others.",
+    "achievement": "Finally, let's talk about something you're proud of.",
+}
 
 
 @dataclass(frozen=True)
 class Persona:
     name: str
     prompt_fragment: str  # added to the interviewer prompt: tone and follow-up style
-    max_followups: int  # follow-up questions per topic before moving on
     allowed_decisions: tuple[Decision, ...]  # what the model may choose after an answer
     challenge_from_level: int  # "challenge" is allowed from this difficulty level (1-3) on
     gives_hints: bool  # False: a hint request gets "let's move on" instead
@@ -42,7 +54,6 @@ NEUTRAL = Persona(
         "candidate said, without praising or judging it. Prefer follow-ups that probe one level deeper "
         "into what they just said. Give a hint only when they ask for one."
     ),
-    max_followups=2,
     allowed_decisions=ALL_DECISIONS,
     challenge_from_level=3,
     gives_hints=True,
@@ -61,7 +72,6 @@ STRICT = Persona(
         "they chose it over an alternative, but never claim the alternative is better. If an answer is "
         "vague, say so in a few words and ask for the specific part again."
     ),
-    max_followups=2,
     allowed_decisions=("probe", "challenge", "next", "clarify_back"),  # no "give me an example" softeners
     challenge_from_level=1,
     gives_hints=False,

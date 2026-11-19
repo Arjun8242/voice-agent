@@ -35,7 +35,10 @@ STT_QUEUE_MAX = 50
 # segments. A starting guess from the plan (900-1200), not yet measured with stream_type=fast.
 STT_INTERVIEW_SILENCE_MS = 1000
 # An interview ends after this long, at the next candidate answer. Caps paid STT minutes and TTS (plan §8).
-INTERVIEW_MAX_SECONDS = 600
+INTERVIEW_MAX_SECONDS = 900
+# Time one question and its answer take, for keeping time for later stages' minimum questions.
+# A starting guess from the v2 design; tune it from the turn log.
+SECONDS_PER_QUESTION = 75
 
 SARVAM_TTS_URL = "https://api.sarvam.ai/text-to-speech/stream"
 TTS_LANGUAGE = "en-IN"

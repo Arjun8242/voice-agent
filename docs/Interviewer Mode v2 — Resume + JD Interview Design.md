@@ -312,14 +312,14 @@ Done when: the existing interview tests pass and two sessions can hold different
 
 **Phase 2 — Interview structure and pacing** (tested with a hand-written fixture plan)
 
-- [ ] 2.1 `Topic` gains `kind`, `source`, `seed_question`, `framework`, `min_q`, `max_q`, `max_level` (`interview/plan.py`).
-- [ ] 2.2 Stage budgets per `kind` as constants; empty stages left out.
-- [ ] 2.3 Stage openers and bridge lines spoken by code; intro and bridge strings in `personas.py`.
-- [ ] 2.4 Per-topic min/max/level in `advance`; override below `min_q` with the "different aspect" instruction.
-- [ ] 2.5 Per-stage time allocation (`SECONDS_PER_QUESTION = 75`), cap 15 minutes.
-- [ ] 2.6 Instructions per `kind` in `prompt.py` (STAR ladder for behavioral); profile summary and STT note in every turn.
-- [ ] 2.7 Fix the meaning of `next` in `prompts/interviewer.md` to match the code.
-- [ ] 2.8 Mis-hearing handling: a fuzzy-match normaliser against the term glossary (code, before `steer`); corrected terms logged per answer for the report. No LLM call.
+- [x] 2.1 `Topic` gains `kind`, `source`, `seed_question`, `framework`, `min_q`, `max_q`, `max_level` (`interview/plan.py`).
+- [x] 2.2 Stage budgets per `kind` as constants; empty stages left out.
+- [x] 2.3 Stage openers and bridge lines spoken by code; intro and bridge strings in `personas.py`.
+- [x] 2.4 Per-topic min/max/level in `advance`; override below `min_q` with the "different aspect" instruction.
+- [x] 2.5 Per-stage time allocation (`SECONDS_PER_QUESTION = 75`), cap 15 minutes.
+- [x] 2.6 Instructions per `kind` in `prompt.py` (STAR ladder for behavioral); profile summary and STT note in every turn.
+- [x] 2.7 Fix the meaning of `next` in `prompts/interviewer.md` to match the code.
+- [x] 2.8 Mis-hearing handling: a fuzzy-match normaliser against the term glossary (code, before `steer`); corrected terms logged per answer for the report. No LLM call.
 
 Done when: scripted-answer tests show every planned stage reaches its minimum, no stage passes its maximum, and struggle ends a stage early.
 
