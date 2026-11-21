@@ -1,4 +1,4 @@
-"""state.py: the per-session state of the interview graph (docs/interviewer-mode-plan.md §5.6).
+"""state.py: the per-session state of the interview graph (v2 design, "System flow").
 
 Persisted per session by the checkpointer (thread_id = session_id):
     topics, profile_summary, glossary, messages, persona, topic_index, level, followups_used, last_question, started_at, finished, answers
@@ -40,8 +40,8 @@ class InterviewState(TypedDict, total=False):
     nudge: int | None  # input: the candidate stayed silent; which nudge to say (interview/personas.py)
     persona: str  # input on the first turn: "neutral" or "strict" (interview/personas.py); persisted
     topics: list[Topic]  # input with every turn: this session's plan, in order; persisted
-    profile_summary: str  # input: a short summary of the candidate's resume (filled from phase 3); persisted
-    glossary: list[str]  # input: every tech name from the resume and JD, for mis-heard terms (phase 3); persisted
+    profile_summary: str  # input: a short summary of the candidate's resume; persisted
+    glossary: list[str]  # input: every tech name from the resume and JD, for mis-heard terms; persisted
     messages: Annotated[list[AnyMessage], add_messages]
     topic_index: int  # which topic of the plan is being discussed
     level: int  # rung of the current topic's follow-up ladder, 1 up to its max_level (prompt.py LADDERS)

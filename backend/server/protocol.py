@@ -4,6 +4,8 @@ Corresponds to src/server/protocol.ts.
 """
 import json
 from typing import Any
+
+from fastapi import WebSocketDisconnect
 from fastapi.websockets import WebSocketState
 
 
@@ -24,8 +26,8 @@ def create_send(ws: Any):
                 msg = {"type": message_type, **(payload or {})}
                 await ws.send_text(json.dumps(msg))
 
-        except Exception:
-            pass
+        except (WebSocketDisconnect, RuntimeError, OSError):
+            return  # the visitor left mid-message; a bug in the message (TypeError) is not hidden
 
     return send
 

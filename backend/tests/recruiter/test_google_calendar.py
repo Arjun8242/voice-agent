@@ -5,7 +5,7 @@ Google's answers map to None / CalendarError.
 """
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -13,7 +13,7 @@ import pytest
 from backend.gcal.adapter import CalendarError, Event, Interval
 from backend.gcal.google import GoogleCalendar
 
-T = datetime(2026, 11, 9, 4, 30, tzinfo=timezone.utc)
+T = datetime(2026, 11, 9, 4, 30, tzinfo=UTC)
 EVENT = Event("a" * 32, T, T + timedelta(minutes=30), "Intro", "priya@example.com")
 
 

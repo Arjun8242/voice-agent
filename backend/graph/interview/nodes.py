@@ -97,7 +97,7 @@ def create_interviewer_node(generate_fn: Callable):
                     if watch_for_hint and tags.decision == HINT_REQUEST:
                         return asked_for_hint(errors)  # the tag comes first, so nothing of this reply was spoken
                     spoken += speak(write, text)
-        except Exception as err:  # CancelledError is a BaseException and passes through
+        except Exception as err:  # noqa: BLE001 - any model failure becomes the spoken error line; CancelledError passes
             errors.append(f"interviewer: {err}")
         spoken += speak(write, tags.finish())
         if not spoken.strip():

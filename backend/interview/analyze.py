@@ -147,7 +147,7 @@ async def analyze(resume: str, job_description: str, generate_fn: Callable) -> A
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             text = await collect_text(generate_fn(message, load_analyzer_prompt()))
-        except Exception as err:  # a failed call is retried like a bad reply; CancelledError passes through
+        except Exception as err:  # noqa: BLE001 - a failed call is retried like a bad reply; CancelledError passes
             print(f"[analysis] attempt {attempt}: {type(err).__name__}")
             continue
         parsed = parse_analysis(text)

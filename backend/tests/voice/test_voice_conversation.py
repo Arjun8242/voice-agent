@@ -297,7 +297,7 @@ def test_7_junk_text_frames_do_not_drop_the_connection():
 
 
 def test_8_two_cut_ins_in_a_row_each_keep_their_own_heard_text_once():
-    model = GatedModel(two_sentences_then_hold(), [f"Other one. ", "Other two. ", asyncio.Event()], ["Fine."])
+    model = GatedModel(two_sentences_then_hold(), ["Other one. ", "Other two. ", asyncio.Event()], ["Fine."])
 
     async def scenario(h):
         await h.say("q1")
@@ -545,7 +545,7 @@ def test_a_missing_or_malformed_id_gets_a_fresh_valid_one():
     for bad in ("", "../../etc/passwd", "A" * 32, 123):
         model = GatedModel()
 
-        async def scenario(h):
+        async def scenario(h, bad=bad):  # bound now: each pass runs its own scenario
             start(h, bad)
             await h.until(lambda: h.of_type("session"), "the session reply")
             new = h.of_type("session")[0]["sessionId"]
@@ -579,7 +579,7 @@ def test_an_invalid_timezone_falls_back_to_the_default():
     assert thread_state(graph, SID)["visitor_timezone"] == "Asia/Kolkata"
 
 
-# --- turn log: how the turn was taken (plan §7.3) --------------------------------------
+# --- turn log: how the turn was taken ---------------------------------------------------
 
 def test_a_turn_merged_from_two_finals_logs_both_segments_and_the_long_hold():
     model = GatedModel(["Fine."])

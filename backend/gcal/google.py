@@ -21,9 +21,19 @@ import httpx
 from .adapter import CalendarError, Event, Interval
 
 try:
-    from config import GOOGLE_CALENDAR_ID, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+    from config import (
+        GOOGLE_CALENDAR_ID,
+        GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET,
+        GOOGLE_REFRESH_TOKEN,
+    )
 except (ImportError, ModuleNotFoundError):
-    from backend.config import GOOGLE_CALENDAR_ID, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+    from backend.config import (
+        GOOGLE_CALENDAR_ID,
+        GOOGLE_CLIENT_ID,
+        GOOGLE_CLIENT_SECRET,
+        GOOGLE_REFRESH_TOKEN,
+    )
 
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 API = "https://www.googleapis.com/calendar/v3"

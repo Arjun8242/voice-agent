@@ -7,10 +7,10 @@ Slots sit on a grid of the meeting length, starting at start_time in the calenda
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
 
+from dataclasses import dataclass
+from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 try:
     from backend.gcal.adapter import Interval
@@ -52,8 +52,8 @@ def compute_slots(sched: Scheduling, busy: list[Interval], now: datetime, visito
         if DAYS[day.weekday()] not in a.working_days:
             continue
         # step in UTC so a daylight-saving change in the calendar's timezone cannot skew the grid
-        cursor = datetime.combine(day, time.fromisoformat(a.start_time), tzinfo=host).astimezone(timezone.utc)
-        stop = datetime.combine(day, time.fromisoformat(a.end_time), tzinfo=host).astimezone(timezone.utc)
+        cursor = datetime.combine(day, time.fromisoformat(a.start_time), tzinfo=host).astimezone(UTC)
+        stop = datetime.combine(day, time.fromisoformat(a.end_time), tzinfo=host).astimezone(UTC)
         while cursor + length <= stop:
             clear = not any(cursor < end and cursor + length > start for start, end in blocked)
             if earliest <= cursor <= latest and clear:

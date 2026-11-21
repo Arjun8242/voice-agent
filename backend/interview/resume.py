@@ -25,12 +25,12 @@ MAX_JD_CHARS = 8_000
 MIN_PHONE_DIGITS = 10
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
-LINK = re.compile(r"(?:https?://|www\.)\S+|\b(?:linkedin\.com|github\.com|gitlab\.com)/\S*", re.I)
+LINK = re.compile(r"(?:https?://|www\.)\S+|\b(?:linkedin\.com|github\.com|gitlab\.com)/\S*", re.IGNORECASE)
 PHONE_LIKE = re.compile(r"\+?\d[\d\s().-]{8,}\d")
 # shortcut: an address line needs an address word and a postal code; upgrade if real resumes slip through
 ADDRESS_LINE = re.compile(
     r"^(?=.*\b(?:road|rd|street|nagar|sector|colony|lane|marg|apartment|apt|flat|block|district|india)\b)"
-    r"(?=.*\b(?:\d{3}\s?\d{3}|\d{5})\b).*$", re.I | re.M)
+    r"(?=.*\b(?:\d{3}\s?\d{3}|\d{5})\b).*$", re.IGNORECASE | re.MULTILINE)
 
 
 class ResumeError(Exception):

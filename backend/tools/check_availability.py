@@ -6,7 +6,7 @@ The visitor's timezone comes from ctx (the session), never from the model.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from .schemas import Args, ToolError
@@ -61,7 +61,7 @@ def fresh_slots(cal, sched, now: datetime, zone: str):
         raise ToolError("not_configured", str(err))
 
 
-def check_availability(args: Args, ctx: dict, cal, sched, clock=lambda: datetime.now(timezone.utc)) -> tuple[dict, list[dict]]:
+def check_availability(args: Args, ctx: dict, cal, sched, clock=lambda: datetime.now(UTC)) -> tuple[dict, list[dict]]:
     first, last = _day(args.date_from, "date_from"), _day(args.date_to, "date_to")
     earliest, latest = _clock_time(args.time_from, "time_from"), _clock_time(args.time_to, "time_to")
     zone = ctx["visitor_timezone"]

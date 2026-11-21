@@ -176,17 +176,6 @@ def test_interview_turns_are_logged_with_their_mode():
 # --- the End button (C2) ---------------------------------------------------------------------
 
 
-def test_each_interview_turn_tells_the_page_which_stage_is_live():
-    graph, _ = interviewer()
-
-    async def scenario(h):
-        start(h)
-        await h.until(lambda: h.of_type("interview_stage"), "the stage after the opening")
-        assert h.of_type("interview_stage")[-1] == {"type": "interview_stage", "stage": "deep_dive"}  # no turnId: never stale
-        end(h)
-        await h.until(lambda: h.of_type("interview_stage")[-1]["stage"] == "wrap", "the wrap stage after the end")
-    run(scenario, GatedModel(), interview_graph=graph)
-
 def end(h) -> None:
     h.send_text(json.dumps({"type": "end_interview"}))
 
@@ -452,7 +441,7 @@ def test_leaving_the_page_cancels_a_report_still_being_written():
     run(scenario, GatedModel(), interview_graph=graph, evaluator=evaluator)
 
 
-# --- Sarvam savings (phase 5) ----------------------------------------------------------------------
+# --- Sarvam savings ----------------------------------------------------------------------
 
 from backend.interview.personas import CLOSING
 from backend.pipeline import fixed_audio
@@ -510,4 +499,3 @@ def test_the_end_of_the_interview_closes_stt_and_later_audio_is_dropped():
         await asyncio.sleep(0.1)
         assert h.stt_holder[0].audio == []
     run(scenario, GatedModel(), interview_graph=graph)
-

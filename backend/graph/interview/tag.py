@@ -6,7 +6,7 @@ The model's reply starts with one tag, then the spoken text:
     Right, the scheduler takes a lock. What happens if the worker holding it dies?
 
 One streamed call carries both. A tool call would not work here: rag/llm.py yields tool calls only
-after the whole stream ends (docs/interviewer-mode-plan.md §6.3).
+after the whole stream ends (v2 design, "Turn handling and pacing rules").
 
 Rules a reader would not guess:
 - Tag text never reaches TTS. Until the tag is closed, the buffer holds the stream back; a reply that
@@ -27,7 +27,7 @@ FALLBACK_DECISION: Decision = "next"
 # phrase rules (interview/intents.py) did not catch. The interviewer node acts on it, never the model.
 HINT_REQUEST: Decision = "hint_request"
 MAX_TAG_CHARS = 120  # a tag longer than this is broken; stop holding the stream back
-TAG = re.compile(r"\[\[(.*?)\]\]", re.S)
+TAG = re.compile(r"\[\[(.*?)\]\]", re.DOTALL)
 
 
 def parse_tag(body: str) -> Decision | None:

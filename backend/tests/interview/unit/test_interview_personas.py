@@ -32,7 +32,6 @@ BULBUL_V3_SPEAKERS = {
 
 
 def test_neutral_follows_the_plan_table():
-    # docs/interviewer-mode-plan.md §4.1 G, "Neutral" column
     assert (NEUTRAL.gives_hints, NEUTRAL.challenge_from_level) == (True, 3)
     assert NEUTRAL.allowed_decisions == ALL_DECISIONS and len(NEUTRAL.nudges) == 2
 

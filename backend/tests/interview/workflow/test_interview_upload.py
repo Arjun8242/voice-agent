@@ -14,7 +14,13 @@ from backend.graph.interview.graph import build_interview_graph
 from backend.interview.personas import BRIDGES, INTRO_QUESTION, OPENING, THANKS
 from backend.server.interview_upload import router as upload_router
 from backend.tests.helpers import ScriptedModel
-from backend.tests.interview.fixtures import JOB_DESCRIPTION, RESUME, model_reply, scanned_pdf, text_pdf
+from backend.tests.interview.fixtures import (
+    JOB_DESCRIPTION,
+    RESUME,
+    model_reply,
+    scanned_pdf,
+    text_pdf,
+)
 
 KEY = "test-key"
 SESSION = "0123456789abcdef0123456789abcdef"
@@ -28,6 +34,7 @@ def app(monkeypatch):
     app.include_router(upload_router)
     app.state.analyzer = ScriptedModel(model_reply())
     app.state.interview_plans = {}
+    app.state.upload_history = {}
     app.state.interview_graph = build_interview_graph(ScriptedModel())
     return app
 

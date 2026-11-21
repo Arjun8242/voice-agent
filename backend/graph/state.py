@@ -13,10 +13,11 @@ returns, so ingest's empty values really reset it. With an add reducer, ingest's
 [] would add nothing and the lists would keep growing across turns.
 """
 
-from typing import TypedDict, Annotated
+from typing import Annotated, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
+
 
 class TurnState(TypedDict, total = False):
     query: str

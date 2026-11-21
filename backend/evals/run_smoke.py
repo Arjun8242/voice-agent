@@ -36,7 +36,7 @@ DEFAULT_INDEX = Path(__file__).resolve().parents[2] / "data" / "kb_index.json"
 def load_questions(path: Path) -> list[dict]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
-        raise ValueError(f"{path}: top level must be a list of questions")
+        raise TypeError(f"{path}: top level must be a list of questions")
     return data
 
 

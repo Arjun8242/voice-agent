@@ -1,7 +1,7 @@
 """turn_taking.py: decides when the speaker has finished their turn.
 
-Sarvam's VAD says "you stopped making sound"; this decides "you stopped making your point"
-(docs/interviewer-mode-plan.md §6.1). After each final transcript it waits a hold time, longer
+Sarvam's VAD says "you stopped making sound"; this decides "you stopped making your point".
+After each final transcript it waits a hold time, longer
 when the words sound unfinished or the speaker asked for time, and any new speech cancels the
 wait. Finals are merged into one turn until the hold expires.
 

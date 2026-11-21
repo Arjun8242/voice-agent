@@ -18,9 +18,10 @@ import json
 import math
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .loaders import read_text, split_front_matter
 from .validate import (

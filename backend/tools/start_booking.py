@@ -6,7 +6,7 @@ else: no calendar event, no reservation. The chosen slot is re-checked against f
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .check_availability import fresh_slots
 from .schemas import Args, ToolError
@@ -20,7 +20,7 @@ except (ImportError, ModuleNotFoundError):
     from booking.store import PENDING
 
 
-def start_booking(args: Args, ctx: dict, cal, sched, store, clock=lambda: datetime.now(timezone.utc)) -> tuple[dict, list[dict]]:
+def start_booking(args: Args, ctx: dict, cal, sched, store, clock=lambda: datetime.now(UTC)) -> tuple[dict, list[dict]]:
     session, zone = ctx["session_id"], ctx["visitor_timezone"]
     current = store.for_session(session)
     if current and current["status"] not in PENDING:

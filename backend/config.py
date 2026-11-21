@@ -34,7 +34,7 @@ STT_QUEUE_MAX = 50
 # default (500 ms) by not sending the parameter; an interview candidate pauses to think, so fewer, longer
 # segments. A starting guess from the plan (900-1200), not yet measured with stream_type=fast.
 STT_INTERVIEW_SILENCE_MS = 1000
-# An interview ends after this long, at the next candidate answer. Caps paid STT minutes and TTS (plan §8).
+# An interview ends after this long, at the next candidate answer. Caps paid STT minutes and TTS (v2 design, "LLM and Sarvam usage").
 INTERVIEW_MAX_SECONDS = 900
 # Time one question and its answer take, for keeping time for later stages' minimum questions.
 # A starting guess from the v2 design; tune it from the turn log.
@@ -56,3 +56,7 @@ GOOGLE_CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+# Page origins allowed to call the HTTP API from another origin, comma separated (web VITE_API_URL); none by default.
+CORS_ORIGINS = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
+# The eval judge 
+GROQ_JUDGE_MODEL = os.environ.get("GROQ_JUDGE_MODEL", "llama-3.3-70b-versatile")

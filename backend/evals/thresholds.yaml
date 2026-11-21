@@ -7,3 +7,8 @@ unanswerable:
   min_pass_rate: 0.75
 grounded:
   min_pass_rate: 0.83
+plans:
+  min_pass_rate: 0.83
+  min_claim_keep_rate: 0.85  
+followups:
+  min_pass_rate: 0.85

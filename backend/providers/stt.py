@@ -8,12 +8,23 @@ import base64
 import json
 from asyncio import Queue, QueueFull
 from typing import Protocol
+
 import websockets
 
 try:
-    from config import SARVAM_API_KEY, SARVAM_STT_URL, STT_INTERVIEW_SILENCE_MS, STT_QUEUE_MAX
+    from config import (
+        SARVAM_API_KEY,
+        SARVAM_STT_URL,
+        STT_INTERVIEW_SILENCE_MS,
+        STT_QUEUE_MAX,
+    )
 except (ImportError, ModuleNotFoundError):
-    from backend.config import SARVAM_API_KEY, SARVAM_STT_URL, STT_INTERVIEW_SILENCE_MS, STT_QUEUE_MAX
+    from backend.config import (
+        SARVAM_API_KEY,
+        SARVAM_STT_URL,
+        STT_INTERVIEW_SILENCE_MS,
+        STT_QUEUE_MAX,
+    )
 
 
 def stt_url(mode: str) -> str:
@@ -71,13 +82,12 @@ class SttClient:
                 self.url,
                 additional_headers={"api-subscription-key": SARVAM_API_KEY},
                 ping_interval=5,
-            ) as ws:
-                async with asyncio.TaskGroup() as tg:
-                    tg.create_task(self._sender(ws))
-                    tg.create_task(self._reader(ws))
+            ) as ws, asyncio.TaskGroup() as tg:
+                tg.create_task(self._sender(ws))
+                tg.create_task(self._reader(ws))
         except asyncio.CancelledError:
             pass
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - any socket failure is reported to the page as an STT error
             await self._handlers.on_error(str(e))
 
     async def _sender(self, ws) -> None:

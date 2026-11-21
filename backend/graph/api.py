@@ -9,15 +9,14 @@ endpoint is disabled. server/main.py includes this router.
 """
 
 import asyncio
-import os 
+import os
 import secrets
-
-from fastapi import APIRouter, Header, HTTPException, Request
 from typing import Literal
 
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
-from .runner import run_turn
 
+from .runner import run_turn
 
 TURN_TIMEOUT = 30
 
@@ -87,7 +86,7 @@ async def turn(body: TurnRequest, request: Request, API_KEY: str | None = Header
         try:
             plan = getattr(request.app.state, "interview_plans", {}).get(body.session_id)  # from POST /interview/upload
             return await asyncio.wait_for(run_interview_turn(graph, body, plan), TURN_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise HTTPException(504, f"turn exceeded {TURN_TIMEOUT}s")
     try:
         click = body.input.ui_action.model_dump() if body.input.ui_action else None
@@ -98,5 +97,5 @@ async def turn(body: TurnRequest, request: Request, API_KEY: str | None = Header
             result["booking_update"] = await asyncio.wait_for(executor.run(handoff["booking_id"], handoff["kind"]), TURN_TIMEOUT)
         return result
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise HTTPException(504, f"turn exceeded {TURN_TIMEOUT}s")

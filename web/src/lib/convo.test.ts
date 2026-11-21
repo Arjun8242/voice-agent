@@ -1,7 +1,7 @@
 // Run with `npm test` (Node's built-in runner).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addAgentText, addVisitorWords, clock, dropTurn } from './convo.ts';
+import { addAgentText, addVisitorWords, dropTurn } from './convo.ts';
 
 test('the pieces of one answer join into one message, a new turn starts another', () => {
   let feed = addAgentText([], 1, 'Walk me ');
@@ -26,10 +26,4 @@ test('an interrupted turn loses its answer but keeps what the visitor said', () 
 
 test('empty visitor words add nothing', () => {
   assert.deepEqual(addVisitorWords([], '   '), []);
-});
-
-test('the timer reads minutes and padded seconds', () => {
-  assert.equal(clock(0), '0:00');
-  assert.equal(clock(65.9), '1:05');
-  assert.equal(clock(900), '15:00');
 });

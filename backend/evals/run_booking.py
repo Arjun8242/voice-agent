@@ -16,7 +16,14 @@ import sys
 import tempfile
 from datetime import date
 from pathlib import Path
-from backend.evals.run_questions import KB_DIR, args_match, load_cases, min_rate_for, print_report
+
+from backend.evals.run_questions import (
+    KB_DIR,
+    args_match,
+    load_cases,
+    min_rate_for,
+    print_report,
+)
 
 DEFAULT_FILE = Path(__file__).resolve().parent / "booking.yaml"
 EVAL_TZ = "Asia/Kolkata" 

@@ -3,7 +3,7 @@ a fake graph stream, and a driver for the whole booking flow. No network anywher
 
 import asyncio
 import importlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.booking.execute import BookingExecutor
 from backend.booking.store import BookingStore
@@ -17,7 +17,6 @@ from backend.tools.kb_data import KbData
 # the package re-exports the function voice_turn, which hides the module of the same name
 vt = importlib.import_module("backend.pipeline.voice_turn")
 
-UTC = timezone.utc
 # 2026-11-06 is a Friday, so the first working day after it is Monday 2026-11-09; 10:00 IST there is 04:30 UTC
 FRIDAY_NOON = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
 FIRST_SLOT = "2026-11-09T04:30Z"

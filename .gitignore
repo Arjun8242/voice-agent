@@ -4,12 +4,6 @@ node_modules/
 # Environment variables
 .env
 
-# Documentation
-phase0-audit.md
-knowledge_base/docs/decisions/phase0-audit.md
-docs/session-handoff.md
-
-
 # Logs & output files
 *.log
 *.wav
@@ -39,10 +33,8 @@ reports/
 
 
 # Local tooling and tests
-backend/tests/client_secret.json
-backend/tests/google_auth.py
+client_secret*.json
 CLAUDE.md
 .claude/
 graphify-out/
-
-docs/interviewer-mode-features.md
+docs/

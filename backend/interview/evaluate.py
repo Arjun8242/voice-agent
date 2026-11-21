@@ -29,7 +29,7 @@ from backend.interview.report import EMPTY_REPORT, ModelReport, Report, build_re
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "evaluator.md"
 MAX_ATTEMPTS = 2
-EVALUATOR_MAX_TOKENS = 4096  # reasoning plus about 2k of JSON (plan §8.2); a spoken turn gets 512
+EVALUATOR_MAX_TOKENS = 4096  # reasoning plus about 2k of JSON (v2 design, "LLM and Sarvam usage"); a spoken turn gets 512
 
 # What each kind of answer is judged on, and what it is not (the design's rubric table).
 RUBRIC: dict[str, str] = {
@@ -98,7 +98,7 @@ async def evaluate_interview(answers: list[Answer], topics: list[Topic], generat
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             text = await collect_text(generate_fn(message, load_evaluator_prompt()))
-        except Exception as err:  # a failed model call is retried like a bad reply; CancelledError passes through
+        except Exception as err:  # noqa: BLE001 - a failed call is retried like a bad reply; CancelledError passes
             print(f"[evaluate] attempt {attempt}: {type(err).__name__}")
             continue
         parsed = parse_model_report(text, len(graded))

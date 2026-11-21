@@ -5,25 +5,26 @@ Corresponds to src/providers/tts.ts.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+
 import httpx
 
 try:
     from config import (
-        SARVAM_TTS_URL,
         SARVAM_API_KEY,
+        SARVAM_TTS_URL,
         TTS_LANGUAGE,
         TTS_MODEL,
-        TTS_SPEAKER,
         TTS_OUTPUT_FORMAT,
+        TTS_SPEAKER,
     )
 except (ImportError, ModuleNotFoundError):
     from backend.config import (
-        SARVAM_TTS_URL,
         SARVAM_API_KEY,
+        SARVAM_TTS_URL,
         TTS_LANGUAGE,
         TTS_MODEL,
-        TTS_SPEAKER,
         TTS_OUTPUT_FORMAT,
+        TTS_SPEAKER,
     )
 
 
@@ -41,7 +42,7 @@ async def warm_tts(client: httpx.AsyncClient):
 
     try:
         await stream_tts("Hi.", asyncio.Event(), _discard, client)
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - warm-up is best effort; a real call reports its own error
         print(f"[TTS] warm-up failed: {err}")
 
 async def stream_tts(

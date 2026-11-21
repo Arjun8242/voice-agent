@@ -12,7 +12,13 @@ from backend.graph.graph import build_graph
 from backend.graph.nodes.tools import MAX_TOOL_STEPS
 from backend.graph.runner import run_turn, stream_turn
 from backend.rag import llm
-from backend.tests.helpers import DESCRIPTIONS, ScriptedModel, call, make_kb, no_retrieval
+from backend.tests.helpers import (
+    DESCRIPTIONS,
+    ScriptedModel,
+    call,
+    make_kb,
+    no_retrieval,
+)
 from backend.tools.registry import Tool, ToolRegistry, build_registry
 from backend.tools.schemas import Args, GetSkillsArgs
 

@@ -1,15 +1,16 @@
 """connection.py: Per-connection handler — wires barge-in, STT, and answer turns.
 """
-import re
 import asyncio
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
-from zoneinfo import ZoneInfo
-from fastapi import WebSocket
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 import httpx
+from fastapi import WebSocket, WebSocketDisconnect
 
 from backend.interview.personas import NEUTRAL, Persona, get_persona
 from backend.interview.plan import live_stage
@@ -18,8 +19,9 @@ from backend.pipeline.turn_taking import INTERVIEW_POLICY, TurnTaker
 from backend.providers.stt import stt_url
 
 try:
-    from pipeline.voice_turn import voice_turn
     from pipeline.barge_in import BargeIn
+    from pipeline.voice_turn import voice_turn
+    from providers.stt import create_stt
     from server.protocol import create_send, with_turn_id
     from server.session import (
         Conversation,
@@ -32,12 +34,12 @@ try:
         start_turn,
         take_heard,
     )
-    from providers.stt import create_stt
 
 
 except (ImportError, ModuleNotFoundError):
-    from backend.pipeline.voice_turn import voice_turn
     from backend.pipeline.barge_in import BargeIn
+    from backend.pipeline.voice_turn import voice_turn
+    from backend.providers.stt import create_stt
     from backend.server.protocol import create_send, with_turn_id
     from backend.server.session import (
         Conversation,
@@ -50,7 +52,6 @@ except (ImportError, ModuleNotFoundError):
         start_turn,
         take_heard,
     )
-    from backend.providers.stt import create_stt
 
 DEFAULT_TIMEZONE = "Asia/Kolkata"
 END_REQUEST = "Let's end the interview."  # what the End button means; interview/intents.py reads it as "end"
@@ -60,7 +61,7 @@ def valid_timezone(name: object) -> str:
     try:
         ZoneInfo(name)
         return name
-    except Exception:
+    except (ZoneInfoNotFoundError, ValueError, TypeError):  # unknown, malformed, or not a string
         return DEFAULT_TIMEZONE
 
 
@@ -136,7 +137,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
                 update = await executor.run(event["booking_id"], event["kind"])
                 if update:
                     await send("booking_update", update)
-            except Exception as err:  # the visitor may have left; the booking itself is already decided
+            except Exception as err:  # noqa: BLE001 - the visitor may have left; the booking itself is already decided
                 print(f"[booking] {err}")
 
         if executor is not None:
@@ -184,7 +185,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             if interviewing:
                 await send_stage()
                 await start_report_if_finished()
-        except Exception as err:  # CancelledError is not an Exception: a barge-in ends the task as cancelled
+        except Exception as err:  # noqa: BLE001 - a failed turn must not end the call; a barge-in's CancelledError passes
             print(f"[voiceTurn] {err}")
         finally:
             finish_turn(conv, asyncio.current_task())
@@ -247,7 +248,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         await send("interview_report", {"status": "pending"})
         try:
             report = await evaluator(answers, topics)
-        except Exception as err:  # a bug in the report must not end silently; CancelledError passes through
+        except Exception as err:  # noqa: BLE001 - a bug in the report must not end silently; CancelledError passes
             print(f"[report] {type(err).__name__}: {err}")
             report = None
         if report is None:
@@ -385,8 +386,10 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     try:
         while True:
             msg = await ws.receive()
+            if msg["type"] == "websocket.disconnect":
+                break
 
-            if "bytes" in msg and msg["bytes"]:
+            if msg.get("bytes"):
                 # Raw PCM from AudioWorklet → STT handles base64-encoding + queuing. send_audio would reopen
                 # a closed socket, so audio after the interview's end is dropped here.
                 if listening:
@@ -394,14 +397,18 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             elif msg.get("text"):
                 on_client_message(msg["text"])
 
-    except Exception:
-        pass  # client disconnected or WS error
+    except WebSocketDisconnect:
+        pass  # the visitor left; the finally block cleans up
+    except Exception as err:  # noqa: BLE001 - anything else ends this connection, logged, never silent
+        print(f"[ws] {type(err).__name__}: {err}")
 
     finally:
         turn_taker.dispose()
         plans.pop(session_id, None)  # the resume-derived plan is not kept after the session
         if report_task is not None:
             report_task.cancel()  # nobody is left to read it: stop spending tokens on it
+        if not listening:  # the interview finished: forget its topics and answers; an unfinished one stays for a reload
+            await interview_graph.checkpointer.adelete_thread(session_id)
         stt.close()
         interrupt_turn(conv)
         print("[server] Client disconnected")

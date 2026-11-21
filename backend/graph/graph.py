@@ -17,12 +17,13 @@ can be tested with fakes and never imports the retriever or the LLM itself:
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from .state import TurnState
-from .nodes.ingest import create_ingest_node
-from .nodes.retrieve import create_retrieve_node
+
 from .nodes.agent import create_agent_node
+from .nodes.ingest import create_ingest_node
 from .nodes.respond import respond_node
+from .nodes.retrieve import create_retrieve_node
 from .nodes.tools import MAX_TOOL_STEPS, create_tools_node
+from .state import TurnState
 
 
 def after_agent(state: dict) -> str:

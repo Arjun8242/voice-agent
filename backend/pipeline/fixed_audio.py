@@ -19,8 +19,16 @@ from pathlib import Path
 
 from backend.config import TTS_CACHE_DIR, TTS_SPEAKER
 from backend.interview.behavioral import BEHAVIORAL_QUESTIONS
-from backend.interview.personas import (BRIDGES, CLOSING, HINT_DECLINED, INTRO_QUESTION, OPENING, PERSONAS, SKIP_ACK,
-                                        THANKS)
+from backend.interview.personas import (
+    BRIDGES,
+    CLOSING,
+    HINT_DECLINED,
+    INTRO_QUESTION,
+    OPENING,
+    PERSONAS,
+    SKIP_ACK,
+    THANKS,
+)
 from backend.pipeline.sentence import extract_next_sentence
 
 CACHE_DIR: Path = TTS_CACHE_DIR

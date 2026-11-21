@@ -4,6 +4,7 @@
   import { initPlayback, appendChunk, signalDone, resetPlayback, markSentenceDone, currentSentenceId } from '$lib/playback';
   import { KEEP_ACROSS_TURNS, type Card } from '$lib/cards';
   import { addAgentText, addVisitorWords, dropTurn, type ConvoMessage } from '$lib/convo';
+  import { BACKEND } from '$lib/backend';
   import { CHARACTERS } from '$lib/characters';
   import TopBar from '$lib/components/talk/TopBar.svelte';
   import StagePanel from '$lib/components/talk/StagePanel.svelte';
@@ -48,7 +49,8 @@
   let startedAt = 0;
   let elapsed = $state(0);
 
-  const WS_URL = 'ws://localhost:3001';
+  // Set VITE_WS_URL=wss://<backend-tunnel-host> in web/.env.local to share the app through a tunnel (lib/backend.ts).
+  const WS_URL = BACKEND.ws;
 
   const character = $derived(mode === 'interview' ? (PERSONAS.find((p) => p.name === persona) ?? PERSONAS[0]).character : 'rep');
   const look = $derived(CHARACTERS[character]);

@@ -15,7 +15,7 @@ hand-off for the same booking (a double click) waits for nothing and reports not
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 # backend.* first so the classes match the ones tests and the fake calendar use (see booking/availability.py)
 try:
@@ -78,7 +78,7 @@ def _delete(store, cal, booking: dict) -> str:
     return "cancelled"
 
 
-def execute_booking(store, cal, sched, booking_id: str, kind: str, clock=lambda: datetime.now(timezone.utc)) -> dict | None:
+def execute_booking(store, cal, sched, booking_id: str, kind: str, clock=lambda: datetime.now(UTC)) -> dict | None:
     """Sync (calendar and SQLite). None when there is nothing to do: the booking already moved on."""
     booking = store.get(booking_id)
     if booking is None:
@@ -102,7 +102,7 @@ def execute_booking(store, cal, sched, booking_id: str, kind: str, clock=lambda:
 class BookingExecutor:
     """Runs execute_booking off the event loop, one call per booking at a time."""
 
-    def __init__(self, store, cal, sched, clock=lambda: datetime.now(timezone.utc)):
+    def __init__(self, store, cal, sched, clock=lambda: datetime.now(UTC)):
         self.store, self.cal, self.sched, self.clock = store, cal, sched, clock
         self._running: set[str] = set()  # no lock needed: only the event loop thread touches it
 

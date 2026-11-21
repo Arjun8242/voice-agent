@@ -13,10 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Callable
 
 import yaml
 from pydantic import ValidationError
@@ -26,11 +26,19 @@ from .check_availability import check_availability
 from .kb_data import KbData
 from .links import get_links, links_args_model
 from .project_detail import get_project_detail
-from .schemas import (Args, CancelBookingArgs, CheckAvailabilityArgs, GetProjectDetailArgs, GetSkillsArgs, SearchProjectsArgs,
-                      StartBookingArgs, ToolError)
-from .start_booking import start_booking
+from .schemas import (
+    Args,
+    CancelBookingArgs,
+    CheckAvailabilityArgs,
+    GetProjectDetailArgs,
+    GetSkillsArgs,
+    SearchProjectsArgs,
+    StartBookingArgs,
+    ToolError,
+)
 from .search_projects import search_projects
 from .skills import get_skills
+from .start_booking import start_booking
 
 DEFAULT_TIMEOUT_S = 2.0  # the read-only tools are in-memory lookups
 CALENDAR_TIMEOUT_S = 8.0  # a calendar tool makes a network call
@@ -76,7 +84,7 @@ class ToolRegistry:
             record.update(result=result, cards=cards, ok=True)
         except ToolError as err:
             record["result"] = {"error": err.code, "details": err.details}
-        except Exception as err:  # a bug in a handler must not end the turn
+        except Exception as err:  # noqa: BLE001 - a bug in a handler must not end the turn
             record["result"] = {"error": "tool_failed", "details": f"{type(err).__name__}: {err}"}
         record["ms"] = round((time.perf_counter() - start) * 1000, 1)
         return record

@@ -13,11 +13,27 @@ from pathlib import Path
 try:
     from kb.ingest import split_sections
     from kb.loaders import read_text, split_front_matter
-    from kb.validate import Experience, Link, Project, Scheduling, Skill, parse_list, parse_object
+    from kb.validate import (
+        Experience,
+        Link,
+        Project,
+        Scheduling,
+        Skill,
+        parse_list,
+        parse_object,
+    )
 except (ImportError, ModuleNotFoundError):
     from backend.kb.ingest import split_sections
     from backend.kb.loaders import read_text, split_front_matter
-    from backend.kb.validate import Experience, Link, Project, Scheduling, Skill, parse_list, parse_object
+    from backend.kb.validate import (
+        Experience,
+        Link,
+        Project,
+        Scheduling,
+        Skill,
+        parse_list,
+        parse_object,
+    )
 
 
 @dataclass

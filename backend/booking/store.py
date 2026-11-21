@@ -12,7 +12,7 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 PENDING = ("awaiting_details", "awaiting_confirmation")  # reserves nothing; replaced by the next startBooking
@@ -83,7 +83,7 @@ class BookingStore:
             conn.execute(f"DELETE FROM bookings WHERE session_id = ? AND status IN ({_marks(PENDING)})", (session_id, *PENDING))
             conn.execute(
                 "INSERT INTO bookings (booking_id, session_id, slot_start_utc, visitor_tz, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (booking_id, session_id, slot_start.isoformat(), visitor_tz, "awaiting_details", datetime.now(timezone.utc).isoformat()),
+                (booking_id, session_id, slot_start.isoformat(), visitor_tz, "awaiting_details", datetime.now(UTC).isoformat()),
             )
         return self.get(booking_id)
 

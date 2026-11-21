@@ -38,7 +38,7 @@ REFUSALS = ["don't have", "do not have", "doesn't list", "does not list", "not l
 def load_cases(path: Path) -> list[dict]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
-        raise ValueError(f"{path}: top level must be a list of cases")
+        raise TypeError(f"{path}: top level must be a list of cases")
     return data
 
 

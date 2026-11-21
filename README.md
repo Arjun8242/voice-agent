@@ -30,8 +30,6 @@ browser mic -> WebSocket -> Sarvam STT -> LangGraph -> sentences -> Sarvam TTS -
 - `agent` is one Groq call (`openai/gpt-oss-120b`) with the tools attached. If it asks for tools, they run and their results go back to the model as proper tool messages, up to 4 calls per turn. After that it must answer.
 - `booking_gate` handles card clicks (pick a time, submit details, confirm, cancel) in plain code. The model is not involved, and the confirmation words come from fixed templates.
 
-The design is written up in [docs/langgraph-design.md](docs/langgraph-design.md).
-
 ### Booking safety
 
 - Google Calendar is the calendar of record. SQLite (`data/bookings.db`) holds booking state, which moves through atomic status transitions.
@@ -41,7 +39,7 @@ The design is written up in [docs/langgraph-design.md](docs/langgraph-design.md)
 
 ## Interview mode
 
-Open `/app` (the landing page at `/` links to it). Stay on **interviewer**, press **upload résumé** and pick your resume (PDF), add a job description if you have one, press **analyse résumé** and check the one-line preview of what the interview will cover, then pick an interviewer with the arrows (Sapwa, calm and gives hints, or Sheru Bhai, strict) and press **let's go**. The stage chips above the interviewer follow the interview: after each interview turn the server sends `interview_stage` (the current topic's stage, or `wrap` once the closing line is spoken; no `turnId`, like `interview_report`). The interview runs in stages: an intro, then deep-dives, technical, behavioural and achievement questions when the plan has them, and you answer out loud. Each session's plan is built from the candidate's resume PDF and an optional job description, uploaded before the interview starts ([v2 design](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md)).
+Open `/app` (the landing page at `/` links to it). Stay on **interviewer**, press **upload résumé** and pick your resume (PDF), add a job description if you have one, press **analyse résumé** and check the one-line preview of what the interview will cover, then pick an interviewer with the arrows (Sapwa, calm and gives hints, or Sheru Bhai, strict) and press **let's go**. The stage chips above the interviewer follow the interview: after each interview turn the server sends `interview_stage` (the current topic's stage, or `wrap` once the closing line is spoken; no `turnId`, like `interview_report`). The interview runs in stages: an intro, then deep-dives, technical, behavioural and achievement questions when the plan has them, and you answer out loud. Each session's plan is built from the candidate's resume PDF and an optional job description, uploaded before the interview starts.
 
 ```
 START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response -> END
@@ -61,8 +59,6 @@ START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response
 - **Report.** When the interview ends, one more Groq call reviews each answer (not the intro) against its stage's rubric and gives a band, strong, ok or weak, instead of a score. It names the topic's key points the answer covered and missed by number, so the report shows the framework's own words, never the model's; plus one improvement per answer and three strengths and three things to work on overall (`backend/interview/evaluate.py`, `backend/prompts/evaluator.md`). Code adds the question and transcript, the answer framework, a JD-gap flag, a band per stage, and every term speech recognition got wrong, which never counts against the answer (`backend/interview/report.py`).
 - **Less Sarvam spend.** Every fixed line the interviewer speaks (opening, intro, bridges, nudges, closing and the five behavioral questions) is synthesised once per voice and then played from `data/tts_cache/` (`backend/pipeline/fixed_audio.py`); nothing the model writes or the candidate says is stored. When the interview ends, the server closes the speech-to-text socket, which is billed per open minute, and drops any audio still arriving; the page stops the mic.
 - **Try it in text first.** `POST /internal/turn` with `"mode": "interview"` runs the same interviewer with no speech cost (see [Observability](#observability)).
-
-The design and its task plan are in [docs/Interviewer Mode v2 — Resume + JD Interview Design.md](docs/Interviewer%20Mode%20v2%20%E2%80%94%20Resume%20+%20JD%20Interview%20Design.md).
 
 ## Stack
 
@@ -98,7 +94,6 @@ backend/
   tests/       pytest suite, by area: voice/, recruiter/, shared/, interview/unit/, interview/workflow/; helpers.py holds the shared fakes
 web/           SvelteKit client
 knowledge_base/  structured YAML (projects, skills, links, experience, scheduling) and markdown docs
-docs/          design documents
 ```
 
 ## Setup
@@ -131,9 +126,9 @@ npm install
 npm run dev
 ```
 
-Open the address Vite prints: `/` is the landing page and `/app` is the talk screen. Allow the microphone there. The talk screen connects to `ws://localhost:3001` (set in `web/src/routes/app/+page.svelte`). The UI follows the designs in `docs/viva-landing.html` and `docs/viva-design-blobs.html`; the characters are drawn in `web/src/lib/characters.ts` and animated by `Character.svelte`, which pauses off screen, in hidden tabs and under reduced motion.
+Open the address Vite prints: `/` is the landing page and `/app` is the talk screen. Allow the microphone there. The talk screen connects to `ws://localhost:3001` and sends the résumé upload through the Vite proxy; `web/.env.example` shows how to point both at a deployed server (`VITE_WS_URL`, `VITE_API_URL`, read in `web/src/lib/backend.ts`). When the page and the server are on different domains, list the page's origin in the server's `CORS_ORIGINS`. The upload is limited to 5 per address per 10 minutes (behind a reverse proxy, run uvicorn with `--proxy-headers` so the limit sees real addresses). A finished interview's topics and answers are dropped from server memory when the visitor leaves; an unfinished one is kept so a reload can resume it. The characters are drawn in `web/src/lib/characters.ts` and animated by `Character.svelte`, which pauses off screen, in hidden tabs and under reduced motion.
 
-`.env.example` lists every setting. By default `CALENDAR_BACKEND=fake`, so bookings are kept in memory and no invite is sent. To use your real calendar, set `CALENDAR_BACKEND=google` and provide `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`.
+`.env.example` lists every setting. By default `CALENDAR_BACKEND=fake`, so bookings are kept in memory and no invite is sent. To use your real calendar, set `CALENDAR_BACKEND=google` and provide `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`. To get the refresh token, put your OAuth client file at `scripts/client_secret.json` (git-ignored) and run `python scripts/google_auth.py`.
 
 ## Editing the knowledge base
 
@@ -150,7 +145,7 @@ The suite uses a scripted model, a fake calendar and a mocked Google transport, 
 
 ## Evals
 
-Evals call the real model, so they need a Groq key. All case files are in `backend/evals/` and are checked by code, not by a judge model.
+Evals call the real model, so they need a Groq key, except `run_smoke` and `run_pacing`. All case files are in `backend/evals/` and are checked by code; only the interview follow-up eval adds a judge model.
 
 | Suite | What it checks |
 |---|---|
@@ -159,13 +154,21 @@ Evals call the real model, so they need a Groq key. All case files are in `backe
 | `grounded.yaml` | facts that must come from the knowledge base |
 | `booking.yaml` | multi-turn booking, fault injection, timezones, injection |
 | `smoke.yaml` | retrieval only: is the right chunk in the top results (no model, no Groq tokens) |
+| `plans.yaml` | interview: résumé + job description to plan. Valid JSON, the expected stages, a sensible deep dive, a gap as the technical topic, injected text kept out, and the share of the model's claims found in the résumé |
+| `followups.yaml` | interview: the follow-up to a scripted answer. Code checks (no control tag, no injected text) plus an LLM judge (`followup_judge.md`): refers to the answer, invents nothing, asks one question. The judge is a different model from the interviewer (`GROQ_JUDGE_MODEL`, default `llama-3.3-70b-versatile`), at temperature 0 in JSON mode |
+| `run_pacing.py` | interview pacing over three plan shapes, two candidates and answers of 30 s to 2 min (no model, no tokens) |
 
 ```bash
 python -m backend.evals.run_questions --suite routing --runs 3
 python -m backend.evals.run_booking --runs 3
 python -m backend.evals.run_all --runs 3        # all four, saved to reports/<git sha>.json
 python -m backend.evals.run_smoke               # retrieval only
+python -m backend.evals.run_pacing              # interview pacing, no tokens
+python -m backend.evals.run_plans               # interview plans: 1-2 analysis calls per case
+python -m backend.evals.run_followups           # interview follow-ups: 8 cases, 2 calls each
 ```
+
+Real résumés for the plan eval go in `data/eval_resumes.yaml` (git-ignored, like the PDFs it points to), with the same keys as `plans.yaml` plus `pdf`, `optional_stages` and `rejected`; `run_plans` adds them when the file exists, and reads each PDF the way the upload does.
 
 Pass-rate targets are in `backend/evals/thresholds.yaml`. A turn that errors always fails its case.
 
@@ -215,4 +218,4 @@ The upload costs one Groq call and no Sarvam. The plan is kept in memory until t
 
 ## What is next
 
-Improving retrieval is the last planned phase: a labelled benchmark, comparison of strategies and before/after measurements. The plan is in [docs/retrieval-design.md](docs/retrieval-design.md).
+Improving retrieval is the last planned phase: a labelled benchmark, comparison of strategies and before/after measurements.

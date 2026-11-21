@@ -26,7 +26,13 @@ from collections.abc import Callable
 
 from backend.interview.analyze import Analysis, PlannedTopic
 from backend.interview.behavioral import behavioral_topic
-from backend.interview.plan import InterviewPlan, Topic, intro_topic, make_topic, order_plan
+from backend.interview.plan import (
+    InterviewPlan,
+    Topic,
+    intro_topic,
+    make_topic,
+    order_plan,
+)
 
 MAX_SEED_CHARS = 200
 MAX_SUMMARY_CHARS = 1500

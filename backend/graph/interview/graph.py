@@ -1,4 +1,4 @@
-"""graph.py: wire the interview graph (docs/interviewer-mode-plan.md §6.3).
+"""graph.py: wire the interview graph (v2 design, "System flow").
 
     START -> ingest -> steer --> interviewer -> advance --> response -> END
                           |---> move --------------------'          (code asks the next seed question; no LLM)
@@ -27,8 +27,19 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from backend.config import INTERVIEW_MAX_SECONDS
-from backend.graph.interview.flow import create_advance_node, create_close_node, create_move_node, create_steer_node
-from backend.graph.interview.nodes import create_interviewer_node, ingest_node, nudge_node, repeat_node, response_node
+from backend.graph.interview.flow import (
+    create_advance_node,
+    create_close_node,
+    create_move_node,
+    create_steer_node,
+)
+from backend.graph.interview.nodes import (
+    create_interviewer_node,
+    ingest_node,
+    nudge_node,
+    repeat_node,
+    response_node,
+)
 from backend.graph.interview.state import InterviewState
 
 

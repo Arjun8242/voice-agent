@@ -4,19 +4,20 @@ The prompt and tool declarations are built in backend/graph; this file only talk
 """
 
 import json
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from groq import AsyncGroq
 
 from backend.observability.usage import LlmUsage
 
 try:
-    from config import GROQ_API_KEY, GROQ_MODEL
+    from config import GROQ_API_KEY, GROQ_JUDGE_MODEL, GROQ_MODEL
 except (ImportError, ModuleNotFoundError):
-    from backend.config import GROQ_API_KEY, GROQ_MODEL
+    from backend.config import GROQ_API_KEY, GROQ_JUDGE_MODEL, GROQ_MODEL
 
 MAX_OUTPUT_TOKENS = 512
 REASONING_EFFORT = "low"
+JUDGE_MAX_TOKENS = 300
 
 _client: AsyncGroq | None = None
 
@@ -37,7 +38,7 @@ async def warm_llm() -> None:
             max_completion_tokens=MAX_OUTPUT_TOKENS,
             reasoning_effort=REASONING_EFFORT,
         )
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - warm-up is best effort; a real call reports its own error
         print(f"[llm] warm-up failed: {err}")
 
 
@@ -104,6 +105,23 @@ async def stream_text(
         yield {"name": call["name"], "args": args if isinstance(args, dict) else {}}
     if reported is not None:
         yield to_llm_usage(reported)
+
+
+async def judge_text(prompt: str, system_instruction: str) -> str:
+    """One verdict from the eval judge (GROQ_JUDGE_MODEL), as a JSON string. Never used in a live session.
+
+    Unlike stream_text: a different model, so the interviewer never grades its own follow-ups; temperature 0,
+    so a rerun gives the same verdict; Groq's JSON mode, so the reply always parses; no reasoning_effort,
+    which is a gpt-oss setting other models may reject.
+    """
+    response = await _get_client().chat.completions.create(
+        model=GROQ_JUDGE_MODEL,
+        messages=[{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}],
+        temperature=0,
+        max_completion_tokens=JUDGE_MAX_TOKENS,
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content or ""
 
 
 def final_usage(chunk):

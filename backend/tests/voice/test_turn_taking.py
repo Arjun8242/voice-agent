@@ -1,4 +1,4 @@
-"""TurnTaker: when a speaker's turn is complete (docs/interviewer-mode-plan.md §6.1, scenarios T1-T13).
+"""TurnTaker: when a speaker's turn is complete (scenarios T1-T13).
 
 Time is a FakeClock the test moves by hand, so every boundary is exact ("not at 299 ms, yes at 300 ms")
 and nothing depends on how fast the machine is. No asyncio, no sleeps.

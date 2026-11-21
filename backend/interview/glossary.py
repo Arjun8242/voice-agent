@@ -1,6 +1,6 @@
 """glossary.py: correct tech names that speech-to-text split or mis-heard, before any LLM sees the answer.
 
-The glossary is every tech name from the candidate's resume and job description (phase 3 fills it).
+The glossary is every tech name from the candidate's resume and job description .
 "post gress" -> "PostgreSQL", "type script" -> "TypeScript". Pure code: no LLM call, no Sarvam call.
 
 Rules a reader would not guess:

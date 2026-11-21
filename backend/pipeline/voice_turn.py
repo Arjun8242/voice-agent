@@ -15,11 +15,12 @@ cancelling the turn task (barge-in) also stops the graph. Never swallow Cancelle
 """
 
 import asyncio
-import httpx
 import struct
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
+
+import httpx
 
 try:
     from graph.nodes.agent import ERROR_REPLY
@@ -77,7 +78,7 @@ async def speak_sentence(
 
     except asyncio.CancelledError:
         raise
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - one sentence's TTS failing must not end the turn
         print(f"[TTS] sentence {sentence_id}: {err}")
 
     finally:
@@ -206,15 +207,15 @@ async def voice_turn(
         log_turn(interrupted=True)  # plain file write, no await: safe while the task is being cancelled
         raise
 
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - any failure in a turn ends in the spoken error reply
         print(f"[voiceTurn] {err}")
         # If nothing was spoken yet, say the error reply
         if first_audio["sent_ms"] is None and not first_token:
             try:
                 async with asyncio.TaskGroup() as tg:
                     speak(tg, ERROR_REPLY)
-            except Exception:
-                pass
+            except Exception as err:  # noqa: BLE001 - the error reply itself failed: log it, nothing more to say
+                print(f"[voiceTurn] error reply failed: {err}")
 
     if not cancelled:
         # agent_speaking stays True: the browser is usually still playing the audio, so the visitor

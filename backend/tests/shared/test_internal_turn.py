@@ -88,7 +88,7 @@ def test_ending_an_interview_in_text_returns_the_closing_line(api):
 
 
 def test_interview_and_recruiter_sessions_with_the_same_id_stay_apart(api):
-    client, state = api
+    client, _ = api
     post(client, {"session_id": "same", "input": {"text": "What is Beacon?"}})
     opening = post(client, {"session_id": "same", "mode": "interview"}).json()
     assert opening["intent"] == "start"  # the recruiter turn is not in the interview's history

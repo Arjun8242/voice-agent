@@ -116,17 +116,17 @@ def _find_chunks_file() -> Path:
 def _validate_records(raw: object) -> list[dict]:
     """Validate the common JSON-list schema before loading the model."""
     if not isinstance(raw, list):
-        raise ValueError("KB index must be a JSON list of chunk records")
+        raise TypeError("KB index must be a JSON list of chunk records")
 
     for index, chunk in enumerate(raw):
         if not isinstance(chunk, dict):
-            raise ValueError(
+            raise TypeError(
                 f"KB index record {index} is not a JSON object"
             )
 
         for field in ("id", "title", "content"):
             if not isinstance(chunk.get(field), str):
-                raise ValueError(
+                raise TypeError(
                     f"KB index chunk {index} is missing "
                     f"a string '{field}' field"
                 )

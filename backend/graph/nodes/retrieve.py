@@ -18,7 +18,7 @@ def create_retrieve_node(retrieve_fn):
             if rag.get("status") == "none_relevant" and topic:
                 rag = await retrieve_fn(state["query"], top_k=TOP_K, topic=None)
                 fallback = True
-        except Exception as err:  # retrieval failed: do not pretend the KB has no answer
+        except Exception as err:  # noqa: BLE001 - retrieval failed: do not pretend the KB has no answer
             return {
                 "retrieved": {},
                 "retrieval_status": "error",

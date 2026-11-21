@@ -15,10 +15,12 @@ from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
 from langgraph.config import get_stream_writer
-from .tools import MAX_TOOL_STEPS
 
 from backend.observability.usage import LlmUsage, usage_event
+
+from .tools import MAX_TOOL_STEPS
 
 ERROR_REPLY = "Sorry, I had trouble answering that. Could you ask again?"
 HISTORY_ITEMS = 6
@@ -99,7 +101,7 @@ def create_agent_node(generate_fn, tools: list[dict] | None = None):
                     first_ms = round((time.perf_counter() - start) * 1000, 1)
                 out += piece
                 write({"type": "token", "text": piece})
-        except Exception as err:  # CancelledError is a BaseException and passes through
+        except Exception as err:  # noqa: BLE001 - any model failure becomes the fallback reply; CancelledError passes
             errors.append(f"agent: {err}")
             calls = []
             if not out:

@@ -12,7 +12,7 @@ Rules a reader would not guess:
   that please?"). "I don't know the exact number, but it's about 5 ms" is an answer, not a skip.
   A mixed turn ("I don't know, give me a hint") is an answer too: the interviewer model sees it.
 - "I'm done" on its own is not "end": in an interview it means "I finished answering".
-- Clarifications are never graded: the graph stores the intent with the turn (plan §4.1 C).
+- Clarifications are never graded: the graph stores the intent with the turn (v2 design, "Report and grading").
 """
 
 from __future__ import annotations
@@ -28,17 +28,17 @@ Intent = Literal["answer", "repeat", "hint", "rephrase", "skip", "end"]
 POLITENESS = {"sorry", "please", "um", "uh", "hmm", "okay", "ok", "so", "actually", "excuse", "me", "yeah", "well"}
 
 PATTERNS: list[tuple[Intent, str]] = [
-    ("end", r"(?:can we |let's |let us |i want to |i'd like to |i would like to )?(?:end|stop|finish) (?:the|this) interview"
-            r"|i'm done with (?:the|this) interview"),
-    ("repeat", r"(?:can|could|would) you (?:repeat|say) (?:that|it|the question)(?: again)?"
-               r"|repeat(?: that| the question| it)?(?: again)?|say (?:that|it) again|pardon|come again"
-               r"|what was the question|what did you (?:say|ask)|i didn't (?:hear|catch) (?:that|it|you|the question)"),
+    ("end", (r"(?:can we |let's |let us |i want to |i'd like to |i would like to )?(?:end|stop|finish) (?:the|this) interview"
+             r"|i'm done with (?:the|this) interview")),
+    ("repeat", (r"(?:can|could|would) you (?:repeat|say) (?:that|it|the question)(?: again)?"
+                r"|repeat(?: that| the question| it)?(?: again)?|say (?:that|it) again|pardon|come again"
+                r"|what was the question|what did you (?:say|ask)|i didn't (?:hear|catch) (?:that|it|you|the question)")),
     ("hint", r"(?:can|could|may) i (?:get|have) a hint|(?:give me|i need|any) (?:a )?hint|hint"),
-    ("rephrase", r"what do you mean(?: by that)?|(?:can|could) you (?:clarify|rephrase|explain)(?: that| the question| it)?"
-                 r"|clarify|rephrase(?: that| the question)?|which part"
-                 r"|i (?:don't|didn't) (?:understand|get)(?: the question| that| it)?"),
-    ("skip", r"i (?:don't|do not) know|no idea|(?:can we |let's |can i )?(?:skip|pass)(?: this one| this| that| it| the question)?"
-             r"|next question|(?:can we |let's )?move on"),
+    ("rephrase", (r"what do you mean(?: by that)?|(?:can|could) you (?:clarify|rephrase|explain)(?: that| the question| it)?"
+                  r"|clarify|rephrase(?: that| the question)?|which part"
+                  r"|i (?:don't|didn't) (?:understand|get)(?: the question| that| it)?")),
+    ("skip", (r"i (?:don't|do not) know|no idea|(?:can we |let's |can i )?(?:skip|pass)(?: this one| this| that| it| the question)?"
+              r"|next question|(?:can we |let's )?move on")),
 ]
 COMPILED = [(intent, re.compile(pattern)) for intent, pattern in PATTERNS]
 

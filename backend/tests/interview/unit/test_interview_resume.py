@@ -5,7 +5,13 @@ from __future__ import annotations
 
 import pytest
 
-from backend.interview.resume import MAX_JD_CHARS, MAX_RESUME_CHARS, ResumeError, clean_job_description, clean_resume
+from backend.interview.resume import (
+    MAX_JD_CHARS,
+    MAX_RESUME_CHARS,
+    ResumeError,
+    clean_job_description,
+    clean_resume,
+)
 from backend.tests.interview.fixtures import RESUME, scanned_pdf, text_pdf
 
 

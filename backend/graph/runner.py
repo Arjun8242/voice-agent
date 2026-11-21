@@ -6,7 +6,7 @@ The session id doubles as the checkpointer thread id, so history is per session.
 """
 
 import time
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from backend.observability.usage import add_usage, empty_totals
 

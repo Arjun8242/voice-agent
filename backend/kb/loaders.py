@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-_FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n?", re.S)
+_FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n?", re.DOTALL)
 
 
 def read_text(path: Path) -> str:

@@ -10,10 +10,18 @@ import re
 from collections import Counter
 
 from backend.graph.interview.graph import build_interview_graph
-from backend.interview.evaluate import evaluate_interview
 from backend.graph.interview.prompt import DIFFERENT_ASPECT
-from backend.interview.personas import (BRIDGES, CLOSING, HINT_DECLINED, INTRO_QUESTION, NEUTRAL, OPENING, SKIP_ACK,
-                                        THANKS)
+from backend.interview.evaluate import evaluate_interview
+from backend.interview.personas import (
+    BRIDGES,
+    CLOSING,
+    HINT_DECLINED,
+    INTRO_QUESTION,
+    NEUTRAL,
+    OPENING,
+    SKIP_ACK,
+    THANKS,
+)
 from backend.interview.plan import intro_topic, make_topic
 from backend.tests.helpers import ScriptedModel
 
@@ -104,7 +112,7 @@ def questions_per_topic(state: dict) -> Counter:
     return Counter(answer["topic_id"] for answer in state["answers"])
 
 
-# --- whole interviews: budgets per stage (the phase's "done when") ---------------------------------
+# --- whole interviews: budgets per stage  ---------------------------------
 
 def test_a_strong_candidate_gets_every_stages_maximum_and_eight_model_calls():
     interview = Interview(model=PlanFollowingModel(prefer="probe"))
@@ -370,7 +378,7 @@ def test_a_mis_heard_term_is_corrected_before_the_model_and_kept_with_the_answer
     assert state["answers"][-1]["corrections"] == {"post gress": "PostgreSQL"}
 
 
-# --- the report (phase 4's "done when") ----------------------------------------------------------
+# --- the report ----------------------------------------------------------
 
 def test_the_report_reviews_every_graded_answer_and_never_a_hint_repeat_or_skip():
     interview = at_deep_dive(reply("probe", "Think about locks. What does Beacon do?"), reply("probe", "Why a lock?"))

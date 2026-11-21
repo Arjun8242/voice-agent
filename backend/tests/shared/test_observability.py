@@ -7,7 +7,6 @@ from backend.observability import redact as r
 from backend.observability.timings import report
 from backend.tests.helpers import Flow
 
-
 # --- masking what LangSmith receives ------------------------------------------------------
 
 def test_every_checkpoint_of_a_real_booking_is_clean_once_masked(tmp_path):

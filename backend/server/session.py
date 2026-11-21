@@ -94,7 +94,7 @@ async def take_heard(c: Conversation, timeout: float = REPORT_WAIT_S) -> str:
     if c.waiting_for_report is not None:
         try:
             await asyncio.wait_for(c.report_arrived.wait(), timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             c.waiting_for_report = None  # a report that comes after this is ignored
     heard, c.heard = c.heard, ""
     return heard

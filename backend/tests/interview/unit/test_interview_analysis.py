@@ -11,7 +11,12 @@ from backend.interview.assemble import TEMPLATE_SEEDS, assemble_plan, fallback_p
 from backend.interview.behavioral import BEHAVIORAL_QUESTIONS
 from backend.interview.plan import STAGES
 from backend.tests.helpers import ScriptedModel
-from backend.tests.interview.fixtures import JOB_DESCRIPTION, RESUME, model_analysis, model_reply
+from backend.tests.interview.fixtures import (
+    JOB_DESCRIPTION,
+    RESUME,
+    model_analysis,
+    model_reply,
+)
 
 
 def run_analysis(*replies: list[str], resume: str = RESUME) -> tuple[Analysis | None, ScriptedModel]:

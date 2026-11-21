@@ -21,8 +21,20 @@ from backend.graph.nodes.agent import build_prompt
 from backend.graph.nodes.booking_gate import REPLIES, VISITOR_ERRORS
 from backend.graph.runner import run_turn, stream_turn
 from backend.server.session import new_conversation
-from backend.tests.helpers import (DESCRIPTIONS, FIRST_SLOT, FRIDAY_NOON, UTC, FakeGraph, Flow, ScriptedModel, call,
-                                   make_kb, no_retrieval, sched, vt)
+from backend.tests.helpers import (
+    DESCRIPTIONS,
+    FIRST_SLOT,
+    FRIDAY_NOON,
+    UTC,
+    FakeGraph,
+    Flow,
+    ScriptedModel,
+    call,
+    make_kb,
+    no_retrieval,
+    sched,
+    vt,
+)
 from backend.tools.cancel_booking import cancel_booking
 from backend.tools.check_availability import check_availability
 from backend.tools.registry import Tool, ToolRegistry, build_registry

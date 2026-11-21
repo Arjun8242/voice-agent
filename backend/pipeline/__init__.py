@@ -1,11 +1,11 @@
 """Pipeline package."""
-from .sentence import extract_next_sentence
 from .barge_in import BargeIn
-from .voice_turn import voice_turn, speak_sentence
+from .sentence import extract_next_sentence
+from .voice_turn import speak_sentence, voice_turn
 
 __all__ = [
-    "extract_next_sentence",
     "BargeIn",
-    "voice_turn",
+    "extract_next_sentence",
     "speak_sentence",
+    "voice_turn",
 ]

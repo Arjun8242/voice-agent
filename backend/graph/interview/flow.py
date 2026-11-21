@@ -30,7 +30,15 @@ from langgraph.config import get_stream_writer
 
 from backend.graph.interview.pacing import decisions_for_turn
 from backend.graph.interview.state import Answer
-from backend.interview.personas import BRIDGES, CLOSING, HINT_DECLINED, OPENING, SKIP_ACK, THANKS, get_persona
+from backend.interview.personas import (
+    BRIDGES,
+    CLOSING,
+    HINT_DECLINED,
+    OPENING,
+    SKIP_ACK,
+    THANKS,
+    get_persona,
+)
 
 
 def new_topic(index: int) -> dict:

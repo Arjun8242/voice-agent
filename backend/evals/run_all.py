@@ -19,7 +19,7 @@ import asyncio
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.evals import run_booking, run_questions
@@ -32,7 +32,7 @@ SUITES = {**{name: (run_questions, path) for name, path in run_questions.FILES.i
 
 
 def commit_name() -> str:
-    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    git = lambda *a: subprocess.run(["git", *a], cwd=ROOT, capture_output=True, text=True, check=False).stdout.strip()
     return (git("rev-parse", "--short", "HEAD") or "nogit") + ("-dirty" if git("status", "--porcelain") else "")
 
 
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     path = REPORTS / f"{commit_name()}.json"
     # a suite run on its own replaces only its entry: the other suites keep what an earlier run recorded
     report = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {"commit": path.stem, "suites": {}}
-    report["created_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    report["created_at"] = datetime.now(UTC).isoformat(timespec="seconds")
     report["suites"].update({name: suite_report(rs, run_questions.min_rate_for(name), args.runs) for name, rs in results.items()})
     others = sorted((f for f in REPORTS.glob("*.json") if f != path), key=lambda f: f.stat().st_mtime)
     previous = json.loads(others[-1].read_text(encoding="utf-8")) if others else None

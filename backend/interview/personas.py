@@ -1,10 +1,10 @@
 """personas.py: how the interviewer behaves, as data, plus the fixed lines it speaks without the LLM.
 
-A persona differs in behaviour rules, not adjectives (docs/interviewer-mode-plan.md §4.1 G):
+A persona differs in behaviour rules, not adjectives (v2 design, "Turn handling and pacing rules"):
 which follow-up decisions it may take, whether it gives hints, what it says when the candidate goes
 quiet, and which TTS voice speaks. How many questions a topic gets is the topic's budget
 (interview/plan.py), the same for every persona. Two personas: "neutral"
-(the default) and "strict", which merges the plan's strict and challenging columns. Adding another
+(the default) and "strict", which merges the earlier strict and challenging personas. Adding another
 is a new entry in PERSONAS; the graph and the connection read only these fields.
 
 Fixed lines (opening, intro, bridges, nudges, closing) never go through the LLM: they cost no tokens and can never say

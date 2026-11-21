@@ -5,40 +5,43 @@
 import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
+
 from fastapi import FastAPI, WebSocket
 
 try:
-    from server.connection import handle_connection
-    from rag.retriever import init_retriever, retrieve, project_aliases
-    from rag.llm import warm_llm, stream_text
-    from graph.graph import build_graph
-    from graph.api import router as internal_router
-    from providers.tts import warm_tts, create_tts_client
     from booking.execute import BookingExecutor
     from booking.store import BookingStore
     from gcal import create_calendar
+    from graph.api import router as internal_router
+    from graph.graph import build_graph
     from graph.nodes.booking_gate import create_booking_gate_node
+    from providers.tts import create_tts_client, warm_tts
+    from rag.llm import stream_text, warm_llm
+    from rag.retriever import init_retriever, project_aliases, retrieve
+    from server.connection import handle_connection
     from tools.kb_data import load_kb_data, load_scheduling
     from tools.registry import build_registry
 except (ImportError, ModuleNotFoundError):
-    from backend.server.connection import handle_connection
-    from backend.rag.retriever import init_retriever, retrieve, project_aliases
-    from backend.rag.llm import warm_llm, stream_text
-    from backend.graph.graph import build_graph
-    from backend.graph.api import router as internal_router
-    from backend.providers.tts import warm_tts, create_tts_client
     from backend.booking.execute import BookingExecutor
     from backend.booking.store import BookingStore
     from backend.gcal import create_calendar
+    from backend.graph.api import router as internal_router
+    from backend.graph.graph import build_graph
     from backend.graph.nodes.booking_gate import create_booking_gate_node
+    from backend.providers.tts import create_tts_client, warm_tts
+    from backend.rag.llm import stream_text, warm_llm
+    from backend.rag.retriever import init_retriever, project_aliases, retrieve
+    from backend.server.connection import handle_connection
     from backend.tools.kb_data import load_kb_data, load_scheduling
     from backend.tools.registry import build_registry
 
 from functools import partial
 
+from backend.config import CORS_ORIGINS
 from backend.graph.interview.graph import build_interview_graph
 from backend.interview.analyze import ANALYSIS_MAX_TOKENS
 from backend.interview.evaluate import EVALUATOR_MAX_TOKENS, evaluate_interview
+from backend.server.interview_upload import allow_page_origins
 from backend.server.interview_upload import router as interview_upload_router
 
 KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
@@ -60,6 +63,7 @@ async def lifespan(app: FastAPI):
         retrieve_fn=retrieve, generate_fn=stream_text, aliases=project_aliases(), registry=registry, gate=gate,
     )
     app.state.interview_plans = {}  # session id -> InterviewPlan, filled by POST /interview/upload
+    app.state.upload_history = {}  # client address -> upload times, for the upload's rate limit
     app.state.analyzer = partial(stream_text, max_tokens=ANALYSIS_MAX_TOKENS)
     app.state.interview_graph = build_interview_graph(stream_text)
     app.state.evaluator = partial(evaluate_interview, generate_fn=partial(stream_text, max_tokens=EVALUATOR_MAX_TOKENS))
@@ -75,6 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(internal_router)
 app.include_router(interview_upload_router)
+allow_page_origins(app, CORS_ORIGINS)
 
 
 @app.get("/health")

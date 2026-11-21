@@ -4,9 +4,11 @@
  * The server answers with a one-line preview of what the interview will cover.
  */
 
+import { BACKEND } from './backend.ts';
+
 export const MAX_PDF_BYTES = 5 * 1024 * 1024; // the server refuses more than about 5 MB
 export const MAX_JD_CHARS = 50_000;
-const UPLOAD_URL = '/interview/upload'; // vite.config.ts forwards it to the server in development
+const UPLOAD_URL = BACKEND.upload; // in development, vite.config.ts forwards it to the server
 
 export interface PlanPreview {
   preview: string;

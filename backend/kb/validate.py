@@ -63,7 +63,7 @@ PLACEHOLDER = re.compile(
     r"<[A-Za-z][A-Za-z0-9 _/-]{0,40}>|\b(?:TODO|TBD|FIXME)\b|\bYOUR_[A-Z0-9_]+\b"
 )
 FIRST_PERSON = re.compile(r"\b(?:I|I'm|I've|I'd|my|me|mine)\b")
-INSTRUCTION = re.compile(r"(?:^|[.;:]\s+)(do not|don't|never)\b", re.I)
+INSTRUCTION = re.compile(r"(?:^|[.;:]\s+)(do not|don't|never)\b", re.IGNORECASE)
 HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
 
@@ -267,7 +267,7 @@ def is_http_url(value: str) -> bool:
 
 
 def strip_code(text: str) -> str:
-    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     return re.sub(r"`[^`\n]*`", "", text)
 
 
@@ -296,9 +296,8 @@ def check_projects(projects: list[Project], kdir: Path, errors: list[str]) -> No
                 errors.append(f"{where}.links.{key}: '{value}' is not a valid http(s) URL (use null if none)")
         if p.links.live is not None and p.links.live == p.links.repo:
             errors.append(f"{where}.links.live: same as repo; use null unless there is a deployed app")
-        if p.status in ("runnable_not_deployed", "in_progress", "idea") and p.links.live:
-            if p.links.live != p.links.repo:
-                errors.append(f"{where}: status is '{p.status}' but links.live is set")
+        if p.status in ("runnable_not_deployed", "in_progress", "idea") and p.links.live and p.links.live != p.links.repo:
+            errors.append(f"{where}: status is '{p.status}' but links.live is set")
         for key, value in p.assets.items():
             if value is not None and not (kdir / value).exists():
                 errors.append(
@@ -397,9 +396,9 @@ def check_scheduling(kdir: Path, errors: list[str], warnings: list[str]) -> None
             problems.append(f"{key} is not set")
         elif not HHMM.match(value):
             errors.append(f"scheduling.yaml.availability.{key}: '{value}' must look like 'HH:MM'")
-    if a.start_time and a.end_time and HHMM.match(a.start_time) and HHMM.match(a.end_time):
-        if a.start_time >= a.end_time:
-            errors.append("scheduling.yaml.availability: start_time must be before end_time")
+    times_valid = a.start_time and a.end_time and HHMM.match(a.start_time) and HHMM.match(a.end_time)
+    if times_valid and a.start_time >= a.end_time:
+        errors.append("scheduling.yaml.availability: start_time must be before end_time")
     if a.min_notice_hours is None:
         problems.append("min_notice_hours is not set")
     if a.buffer_minutes is None:
@@ -497,7 +496,7 @@ def check_project_docs(
                 "or move it to boundaries.md"
             )
         if project.status in ("in_progress", "idea") and re.search(
-            r"\b(built|completed|deployed|launched)\b", prose, re.I
+            r"\b(built|completed|deployed|launched)\b", prose, re.IGNORECASE
         ):
             warnings.append(f"{rel}: status is '{project.status}' but the text says built/completed/deployed; check wording")
 
@@ -523,7 +522,7 @@ def check_other_docs(kdir: Path, errors: list[str], warnings: list[str]) -> None
         if FIRST_PERSON.search(prose):
             warnings.append(f"{rel}: first-person wording; docs should say 'Arjun' or 'he'")
         if name == "faq.md":
-            parts = re.split(r"^###\s+(.+)$", prose, flags=re.M)
+            parts = re.split(r"^###\s+(.+)$", prose, flags=re.MULTILINE)
             for question, answer in zip(parts[1::2], parts[2::2]):
                 if not answer.strip():
                     errors.append(f"{rel}: question '{question.strip()}' has no answer")

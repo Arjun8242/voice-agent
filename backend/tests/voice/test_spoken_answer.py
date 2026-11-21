@@ -12,7 +12,15 @@ from backend.graph.nodes.agent import ERROR_REPLY
 from backend.pipeline.barge_in import BargeIn
 from backend.pipeline.sentence import extract_next_sentence
 from backend.server.session import new_conversation
-from backend.tests.helpers import DESCRIPTIONS, FakeGraph, ScriptedModel, call, make_kb, no_retrieval, vt
+from backend.tests.helpers import (
+    DESCRIPTIONS,
+    FakeGraph,
+    ScriptedModel,
+    call,
+    make_kb,
+    no_retrieval,
+    vt,
+)
 from backend.tools.registry import build_registry
 
 

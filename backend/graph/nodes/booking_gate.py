@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from langgraph.config import get_config, get_stream_writer
 
@@ -66,7 +66,7 @@ def apply_click(action, payload: dict, ctx: dict, store, cal, sched, clock) -> t
     """-> (reply, cards, booking_execute or None). Sync: it reads SQLite and, for select_slot, the calendar."""
     if action == "select_slot":
         try:
-            result, cards = start_booking(StartBookingArgs(slot_id=str(payload.get("slot_id") or "")), ctx, cal, sched, store, clock)
+            _, cards = start_booking(StartBookingArgs(slot_id=str(payload.get("slot_id") or "")), ctx, cal, sched, store, clock)
         except ToolError as err:
             return VISITOR_ERRORS.get(err.code, REPLIES["stale"]), [], None
         return REPLIES["form"], cards, None
@@ -111,7 +111,7 @@ def apply_click(action, payload: dict, ctx: dict, store, cal, sched, clock) -> t
     return REPLIES["unknown"], [], None
 
 
-def create_booking_gate_node(store, calendar, scheduling, clock=lambda: datetime.now(timezone.utc)):
+def create_booking_gate_node(store, calendar, scheduling, clock=lambda: datetime.now(UTC)):
     async def booking_gate_node(state: dict) -> dict:
         write = get_stream_writer()
         start = time.perf_counter()
