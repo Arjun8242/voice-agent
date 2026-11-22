@@ -37,15 +37,18 @@ except (ImportError, ModuleNotFoundError):
 
 from functools import partial
 
-from backend.config import CORS_ORIGINS
+from backend.config import CORS_ORIGINS, MAX_SESSIONS
 from backend.graph.interview.graph import build_interview_graph
 from backend.interview.analyze import ANALYSIS_MAX_TOKENS
 from backend.interview.evaluate import EVALUATOR_MAX_TOKENS, evaluate_interview
 from backend.server.interview_upload import allow_page_origins
 from backend.server.interview_upload import router as interview_upload_router
+from backend.server.idle_sessions import sweep_forever
 
 KB_DIR = Path(__file__).resolve().parents[2] / "knowledge_base"
 BOOKINGS_DB = Path(__file__).resolve().parents[2] / "data" / "bookings.db"
+BUSY_MESSAGE = "The voice agent is busy with other visitors right now. Please try again in a few minutes."
+TRY_AGAIN_LATER = 1013  # WebSocket close code
 
 
 @asynccontextmanager
@@ -68,12 +71,16 @@ async def lifespan(app: FastAPI):
     app.state.interview_graph = build_interview_graph(stream_text)
     app.state.evaluator = partial(evaluate_interview, generate_fn=partial(stream_text, max_tokens=EVALUATOR_MAX_TOKENS))
     app.state.tts_client = create_tts_client()
+    app.state.live_connections = 0  # WebSockets open now, for the MAX_SESSIONS cap
+    app.state.idle_since = {}  # session id -> when its visitor left (server/idle_sessions.py)
     await asyncio.gather(
         warm_llm(),
         warm_tts(app.state.tts_client),
     )
+    sweeper = asyncio.create_task(sweep_forever(app.state.idle_since, [app.state.graph, app.state.interview_graph]))
     print("[server] Voice agent server running on ws://localhost:3001")
     yield
+    sweeper.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -89,6 +96,23 @@ async def health_check() -> dict:
 
 @app.websocket("/")
 async def websocket_endpoint(ws: WebSocket) -> None:
-    await handle_connection(ws, ws.app.state.tts_client, ws.app.state.graph, ws.app.state.executor,
-                            interview_graph=ws.app.state.interview_graph, evaluator=ws.app.state.evaluator,
-                            interview_plans=ws.app.state.interview_plans)
+    """One visitor's connection, unless MAX_SESSIONS are already served: then a busy message and close.
+    No await between the check and the count, so two visitors arriving together cannot both take the last slot."""
+    state = ws.app.state
+    if state.live_connections >= MAX_SESSIONS:
+        await ws.accept()
+        await ws.send_json({"type": "error", "message": BUSY_MESSAGE})
+        await ws.close(code=TRY_AGAIN_LATER)
+        return
+    state.live_connections += 1
+    try:
+        await serve(ws)
+    finally:
+        state.live_connections -= 1
+
+
+async def serve(ws: WebSocket) -> None:
+    state = ws.app.state
+    await handle_connection(ws, state.tts_client, state.graph, state.executor,
+                            interview_graph=state.interview_graph, evaluator=state.evaluator,
+                            interview_plans=state.interview_plans, idle_since=state.idle_since)

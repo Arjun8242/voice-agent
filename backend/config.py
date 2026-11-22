@@ -62,6 +62,11 @@ GOOGLE_CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+# A disconnected visitor's conversation is kept this long for a reload, then forgotten (server/idle_sessions.py).
+SESSION_IDLE_TTL_S = 30 * 60
+# Visitors served at once; one more is told the agent is busy. Bounded by Silero CPU per connection and the
+# Groq and Sarvam rate limits, so measure it on the real server before raising it.
+MAX_SESSIONS = int(os.environ.get("MAX_SESSIONS", "10"))
 # Page origins allowed to call the HTTP API from another origin, comma separated (web VITE_API_URL); none by default.
 CORS_ORIGINS = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "").split(",") if origin.strip()]
 # The eval judge 
