@@ -81,8 +81,8 @@ def allow_page_origins(app: FastAPI, origins: list[str]) -> None:
 
 @router.post("/upload")
 async def upload(body: UploadRequest, request: Request) -> dict:
-    # shortcut: the limit is per server process and keyed on the connecting address; behind a reverse proxy every
-    # visitor shares the proxy's address, so run uvicorn with --proxy-headers there
+    # shortcut: the limit is per server process. Behind a reverse proxy, uvicorn's --forwarded-allow-ips must name the
+    # proxy, or every visitor shares the proxy's address (README, "Deploying")
     client = request.client.host if request.client else "unknown"
     if not allow_upload(request.app.state.upload_history, client, time.monotonic()):
         raise HTTPException(429, {"code": "too_many_uploads", "message": "Too many uploads. Wait a few minutes and try again."})

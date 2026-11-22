@@ -127,9 +127,19 @@ npm install
 npm run dev
 ```
 
-Open the address Vite prints: `/` is the landing page and `/app` is the talk screen. Allow the microphone there. The talk screen connects to `ws://localhost:3001` and sends the résumé upload through the Vite proxy; `web/.env.example` shows how to point both at a deployed server (`VITE_WS_URL`, `VITE_API_URL`, read in `web/src/lib/backend.ts`). When the page and the server are on different domains, list the page's origin in the server's `CORS_ORIGINS`. The upload is limited to 5 per address per 10 minutes (behind a reverse proxy, run uvicorn with `--proxy-headers` so the limit sees real addresses). A finished interview's topics and answers are dropped from server memory when the visitor leaves; an unfinished one is kept so a reload can resume it. The characters are drawn in `web/src/lib/characters.ts` and animated by `Character.svelte`, which pauses off screen, in hidden tabs and under reduced motion.
+Open the address Vite prints: `/` is the landing page and `/app` is the talk screen. Allow the microphone there. The talk screen connects to `ws://localhost:3001` and sends the résumé upload through the Vite proxy; `web/.env.example` shows how to point both at a deployed server (`VITE_WS_URL`, `VITE_API_URL`, read in `web/src/lib/backend.ts`). When the page and the server are on different domains, list the page's origin in the server's `CORS_ORIGINS`. The upload is limited to 5 per address per 10 minutes. A finished interview's topics and answers are dropped from server memory when the visitor leaves; any other conversation, an unfinished interview included, is kept 30 minutes for a reload and then forgotten (`backend/server/idle_sessions.py`). The characters are drawn in `web/src/lib/characters.ts` and animated by `Character.svelte`, which pauses off screen, in hidden tabs and under reduced motion.
 
 `.env.example` lists every setting. By default `CALENDAR_BACKEND=fake`, so bookings are kept in memory and no invite is sent. To use your real calendar, set `CALENDAR_BACKEND=google` and provide `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REFRESH_TOKEN`. To get the refresh token, put your OAuth client file at `scripts/client_secret.json` (git-ignored) and run `python scripts/google_auth.py`.
+
+## Deploying
+
+The server keeps conversations, interview plans and the upload rate limit in its own memory, so run **one process** (one uvicorn worker, one instance). Several would each see only part of the state.
+
+- **HTTPS is required.** Browsers give the microphone only to pages on `https://` (or localhost). Use a host that terminates TLS and passes WebSockets through (Fly.io, Railway, Render, or a VM behind Caddy or nginx), with a persistent disk for `data/` (bookings and recorded audio). Point the page at it with `VITE_WS_URL=wss://...` and `VITE_API_URL=https://...` (`web/.env.example`).
+- **Real visitor addresses.** Behind that proxy, start uvicorn with the proxy's address so the upload limit sees visitors, not the proxy:
+  `python -m uvicorn backend.server.main:app --host 0.0.0.0 --port 3001 --forwarded-allow-ips=<proxy address>` (or set `FORWARDED_ALLOW_IPS`; `*` only if nothing but the proxy can reach the server).
+- **Capacity.** At most `MAX_SESSIONS` visitors (default 10) are served at once; the next one sees a busy message. Each connection runs Silero on the server's CPU and uses your Groq and Sarvam limits, so raise it only after measuring.
+- **Settings.** List the page's origin in `CORS_ORIGINS` when the page and the server are on different domains. Leave `INTERNAL_API_KEY` unset so `/internal/turn` stays off.
 
 ## Editing the knowledge base
 
@@ -206,7 +216,7 @@ The upload costs one Groq call and no Sarvam. The plan is kept in memory until t
 ## Known limits
 
 - The visitor types name and email in an on-screen form. Spoken name, email and yes/no for booking are not built.
-- Conversation memory lives in the running server process and is lost on restart.
+- Conversation memory lives in the running server process: it is lost on restart, and the server cannot run as several instances.
 - Misheard project names can fail: "bacon" for Beacon sends the agent to search instead of opening the project.
 - Retrieval misses some phrasings. "Has he implemented an interpreter from scratch?" does not surface the Valyrian project text.
 - Groundedness is checked with word and phrase matching, not a judge model, so a correct answer worded unexpectedly can fail.

@@ -66,7 +66,7 @@ def valid_timezone(name: object) -> str:
 
 async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph: Any, executor: Any = None,
                             interview_graph: Any = None, evaluator: Callable[[list, list], Awaitable[Any]] | None = None,
-                            interview_plans: dict | None = None) -> None:
+                            interview_plans: dict | None = None, idle_since: dict[str, float] | None = None) -> None:
     """Handle one WebSocket connection from accept() to disconnect.
 
     graph is the compiled agent graph. The connection id is its thread id, so the
@@ -78,6 +78,8 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     interview_plans maps session ids to the plans the resume upload built (server/interview_upload.py).
     This session's plan is sent into the graph's state with every turn, and dropped on disconnect: the
     graph keeps its own copy, so a refresh mid-interview still continues.
+    idle_since maps session ids to when their visitor left (server/idle_sessions.py): set on disconnect,
+    cleared by a session_start with that id.
     """
     await ws.accept()
     print("[server] Client connected")
@@ -97,6 +99,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     report_task: asyncio.Task | None = None  # the report, started once when the interview finishes
     persona: Persona = NEUTRAL  # the interviewer's rules and voice, while interviewing
     plans = interview_plans if interview_plans is not None else {}
+    idle = idle_since if idle_since is not None else {}
     listening = True  # False once an interview has finished: the STT socket is closed and stays closed
 
     # A new event is created for each turn so a stale event from a cancelled turn
@@ -326,6 +329,8 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             old = data.get("sessionId")
             if isinstance(old, str) and SESSION_ID_RE.fullmatch(old):  # only ids we could have made: it becomes a thread id
                 session_id = old
+                # shortcut: two tabs sharing one id (a duplicated tab) are not counted, so one leaving marks both idle
+                idle.pop(session_id, None)
             visitor_timezone = valid_timezone(data.get("timezone"))
             asyncio.get_running_loop().create_task(send("session", {"sessionId": session_id}))  # the browser stores this
         elif isinstance(data, dict) and data.get("type") == "start_interview":
@@ -409,4 +414,5 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
             await interview_graph.checkpointer.adelete_thread(session_id)
         stt.close()
         interrupt_turn(conv)
+        idle[session_id] = time.monotonic()  # kept for a reload; the sweep forgets it after SESSION_IDLE_TTL_S
         print("[server] Client disconnected")
