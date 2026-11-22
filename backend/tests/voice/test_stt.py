@@ -6,7 +6,8 @@ import asyncio
 import json
 from urllib.parse import parse_qs, urlsplit
 
-from backend.providers.stt import SttClient, stt_url
+from backend.config import SARVAM_STT_URL
+from backend.providers.stt import SttClient
 
 
 class RecordingHandlers:
@@ -50,15 +51,14 @@ def read(*events: dict | str) -> list[tuple[str, str]]:
     return handlers.events
 
 
-def test_speech_and_transcript_events_reach_their_handlers_in_order():
+def test_transcript_events_reach_their_handlers_in_order():
     events = read(
-        {"event": "vad.speech_start"},
         {"event": "transcript.partial", "text": "the sched"},
-        {"event": "vad.speech_end"},
         {"event": "transcript.final", "text": " The scheduler. "},
         {"event": "something.new"},  # an event this client does not know is ignored
     )
-    assert events == [("speech_start", ""), ("partial", "the sched"), ("speech_end", ""), ("final", "The scheduler.")]
+    assert events == [("partial", "the sched"), ("final", "The scheduler.")]
+
 
 
 def test_sarvam_error_event_reaches_the_error_handler():
@@ -86,43 +86,7 @@ def test_empty_transcripts_and_junk_frames_are_ignored():
     assert events == [("final", "hi")]
 
 
-# --- the URL per mode ---------------------------------------------------------
+# --- the URL --------------------------------------------------------------------
 
-def query(url: str) -> dict[str, list[str]]:
-    return parse_qs(urlsplit(url).query)
-
-
-def test_recruiter_mode_keeps_the_provider_default_silence():
-    assert "silence_duration_ms" not in query(stt_url("recruiter"))
-
-
-def test_an_unknown_mode_is_treated_like_recruiter_mode():
-    assert stt_url("something else") == stt_url("recruiter")
-
-
-def test_interview_mode_asks_for_one_second_of_silence_and_changes_nothing_else():
-    recruiter, interview = query(stt_url("recruiter")), query(stt_url("interview"))
-    assert interview.pop("silence_duration_ms") == ["1000"]  # the plan's starting value; Sarvam's default is 500
-    assert interview == recruiter  # language, model and stream type are untouched
-    assert urlsplit(stt_url("interview")).path == urlsplit(stt_url("recruiter")).path
-
-
-def test_the_client_connects_to_the_url_it_holds_when_audio_first_arrives(monkeypatch):
-    opened: list[str] = []
-
-    def connect(url, **kwargs):
-        opened.append(url)
-        raise OSError("no network in tests")
-
-    monkeypatch.setattr("backend.providers.stt.websockets.connect", connect)
-
-    async def scenario():
-        handlers = RecordingHandlers()
-        client = SttClient(handlers)
-        client.url = stt_url("interview")  # set after creation, as the connection does on session_start
-        client.send_audio(b"\x00\x00")
-        await asyncio.sleep(0.05)
-        assert handlers.events == [("error", "no network in tests")]
-
-    asyncio.run(scenario())
-    assert opened == [stt_url("interview")]
+def test_sarvam_vad_is_switched_off():
+    assert parse_qs(urlsplit(SARVAM_STT_URL).query)["endpointing"] == ["manual"]

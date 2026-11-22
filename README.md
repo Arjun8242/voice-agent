@@ -11,7 +11,7 @@ It is built to be honest about what it does not know: it answers only from the k
 - **Waits for you to finish.** A short pause, a trailing "and…" or "let me think" does not end your turn, and an "okay" while the agent talks does not cut it off (see [Interview mode](#interview-mode)).
 - **Talk or interrupt.** Speech goes in through Sarvam speech-to-text and comes back through Sarvam text-to-speech, sentence by sentence. If the visitor cuts in, the running turn is cancelled and the agent remembers only what was actually heard.
 - **Answers from evidence.** Questions about projects, decisions and limitations are answered from retrieved excerpts. Questions about skills, project lists and links go through tools, so a missing skill is stated plainly and a project's status (shipped, runs locally, in progress) is reported exactly.
-- **Shows cards.** Project details, profile links and available meeting times appear on screen next to the spoken answer.
+- **Shows cards.** Project details, skills, profile links and available meeting times appear on screen next to the spoken answer.
 - **Books meetings.** The visitor picks a time, types their name and email in an on-screen form, and confirms on screen. The agent can also start a cancellation, which the visitor confirms the same way.
 - **Respects boundaries.** Salary, phone number, academic details, other offers and similar topics follow written rules in `knowledge_base/docs/boundaries.md`. The agent never states a number for them and refers the visitor to Arjun.
 - **Resists prompt injection.** It does not read out its own instructions, treat pasted "tool results" or "system" text as real, or confirm a booking from spoken words alone.
@@ -19,7 +19,7 @@ It is built to be honest about what it does not know: it answers only from the k
 ## How a turn works
 
 ```
-browser mic -> WebSocket -> Sarvam STT -> LangGraph -> sentences -> Sarvam TTS -> browser
+browser mic -> WebSocket -> Silero VAD -> Sarvam STT -> LangGraph -> sentences -> Sarvam TTS -> browser
                                               |
    START -> ingest -> retrieve -> agent <-> tools -> response -> END
                   \-> booking_gate (card clicks) -> response
@@ -55,6 +55,7 @@ START -> ingest -> steer --> interviewer (one Groq call) -> advance --> response
 - **Mis-heard terms.** Before anything else, code puts tech names the speech-to-text split or mis-heard back together from the session's glossary ("post gress" -> "PostgreSQL", `backend/interview/glossary.py`) and keeps the corrections with the answer.
 - **Clarifications are free.** "Repeat that", "can I get a hint", "what do you mean", "skip" and "let's end the interview" are recognised by fixed phrases (`backend/interview/intents.py`). Repeat needs no LLM call, and none of them is graded. A request for help in other words ("I want some level of hint now") is labelled `hint_request` by the model in its control tag; code then gives or declines the hint by the persona's rule, and nothing the model wrote after the label is spoken.
 - **Two interviewers** (`backend/interview/personas.py`): *neutral* (calm, hints on request, gentle nudges after 15 s and 45 s of silence) and *strict* (exacting, challenges choices, no hints or nudges, a different voice).
+- **Speech detection.** Silero VAD runs on the server (`backend/pipeline/vad.py`) and decides where speech starts and ends; Sarvam's own VAD is off (`endpointing=manual`). Speech must last 250 ms to count, so clicks and bangs never open a turn, and the 300 ms before it is sent too. Speech ends after 500 ms of silence (1 s in an interview). Only speech is sent to Sarvam. 
 - **Turn-taking.** `backend/pipeline/turn_taking.py` holds each final transcript before taking the turn: 1.2 s after a complete sentence, 2.5 s after a trailing "and" or "um", 20 s after "let me think". Any new speech cancels the wait. Recruiter mode uses the same controller with shorter holds (300 ms and 800 ms). While the agent's audio plays, only words cut it off (`backend/pipeline/barge_in.py`): an "okay", "mm" or a cough does not.
 - **Report.** When the interview ends, one more Groq call reviews each answer (not the intro) against its stage's rubric and gives a band, strong, ok or weak, instead of a score. It names the topic's key points the answer covered and missed by number, so the report shows the framework's own words, never the model's; plus one improvement per answer and three strengths and three things to work on overall (`backend/interview/evaluate.py`, `backend/prompts/evaluator.md`). Code adds the question and transcript, the answer framework, a JD-gap flag, a band per stage, and every term speech recognition got wrong, which never counts against the answer (`backend/interview/report.py`).
 - **Less Sarvam spend.** Every fixed line the interviewer speaks (opening, intro, bridges, nudges, closing and the five behavioral questions) is synthesised once per voice and then played from `data/tts_cache/` (`backend/pipeline/fixed_audio.py`); nothing the model writes or the candidate says is stored. When the interview ends, the server closes the speech-to-text socket, which is billed per open minute, and drops any audio still arriving; the page stops the mic.
@@ -210,11 +211,11 @@ The upload costs one Groq call and no Sarvam. The plan is kept in memory until t
 - Retrieval misses some phrasings. "Has he implemented an interpreter from scratch?" does not surface the Valyrian project text.
 - Groundedness is checked with word and phrase matching, not a judge model, so a correct answer worded unexpectedly can fail.
 - Evals use the fake calendar, so the Google adapter is covered only by mocked unit tests.
-- Interview mode has not yet been run against real Groq and Sarvam end to end. Its hold times, nudge times and STT silence (`STT_INTERVIEW_SILENCE_MS`) are starting guesses from the plan, not measurements.
+- Interview mode has not yet been run against real Groq and Sarvam end to end. Its hold times, nudge times and VAD silence (`VAD_INTERVIEW_SILENCE_MS`) are starting guesses from the plan, not measurements.
 - The turn-taking word lists are English with a few Hinglish fillers. A phrase they miss is treated as a normal answer.
 - Both interviewers have male voices set in `backend/interview/personas.py`: Sapwa (neutral) `aditya`, meant to be the lighter one, and Sheru Bhai (strict) `shubh`, meant to be the deeper one. Sarvam labels Shubh male but documents no gender or depth for the other voices, so confirm both by ear in the Sarvam playground and swap the name if needed. A new voice gets its own folder in `data/tts_cache/`.
 - The interview report is not yet calibrated against hand-scored answers, and interviews have no eval suite yet.
-- If you speak before pressing Start, speech-to-text keeps the recruiter's shorter end-of-speech silence until the page is reloaded.
+- Silero VAD and its settings (`VAD_THRESHOLD`, 250 ms minimum speech, 300 ms pre-roll) have not yet been tried with a real microphone. The ping that keeps Sarvam's socket open between utterances uses `{"event": "ping"}`, which Sarvam's docs name but do not show.
 
 ## What is next
 

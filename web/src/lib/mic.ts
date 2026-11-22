@@ -19,7 +19,7 @@ export async function startMic(onChunk: (buf: ArrayBuffer) => void): Promise<voi
       channelCount: 1,
       echoCancellation: true,
       noiseSuppression: true,
-      autoGainControl: true,
+      autoGainControl: false,
     },
     video: false,
   });

@@ -12,7 +12,7 @@ class Conversation:
     def __init__(self):
         self.sentence_counter: int = 0
         self.agent_speaking: bool = False  # audio was sent and the browser has not said it finished playing
-        self.speech_ended_at: float | None = None  # when STT last heard the visitor stop (for stt_ms)
+        self.speech_ended_at: float | None = None
         self.current: asyncio.Task | None = None
         # Barge-in bookkeeping: what the visitor really heard of a cut-off answer.
         self.sentences: list[tuple[int, str]] = []  # (sentence id, text) queued for speech this turn

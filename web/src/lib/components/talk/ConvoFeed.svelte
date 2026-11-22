@@ -5,6 +5,8 @@
   import type { ReportState } from '$lib/interview';
   import ProjectCard from '$lib/components/ProjectCard.svelte';
   import LinkCard from '$lib/components/LinkCard.svelte';
+  import SkillsCard from '$lib/components/SkillsCard.svelte';
+  import SkillCard from '$lib/components/SkillCard.svelte';
   import BookingCard from '$lib/components/BookingCard.svelte';
   import InterviewReport from '$lib/components/InterviewReport.svelte';
 
@@ -59,13 +61,19 @@
   {#if thinking}<div class="dots" aria-label="Thinking"><i></i><i></i><i></i></div>{/if}
 
   {#each cards as card (card.card_id)}
-    {#if card.type === 'project_detail'}
-      <ProjectCard data={card.data} />
-    {:else if card.type === 'link'}
-      <LinkCard data={card.data} />
-    {:else}
-      <BookingCard {card} {onAction} />
-    {/if}
+    <div class="card-slot">
+      {#if card.type === 'project_detail'}
+        <ProjectCard data={card.data} />
+      {:else if card.type === 'link'}
+        <LinkCard data={card.data} />
+      {:else if card.type === 'skills'}
+        <SkillsCard data={card.data} />
+      {:else if card.type === 'skill'}
+        <SkillCard data={card.data} />
+      {:else}
+        <BookingCard {card} {onAction} />
+      {/if}
+    </div>
   {/each}
 
   {#if reportState}<InterviewReport state={reportState} />{/if}

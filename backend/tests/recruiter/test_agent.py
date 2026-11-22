@@ -127,6 +127,29 @@ def test_a_project_section_is_shown_and_a_wrong_name_lists_the_valid_choices(reg
     assert rec["result"]["error"] == "unknown_section" and "Overview" in rec["result"]["details"] and rec["cards"] == []
 
 
+def test_the_project_card_carries_what_the_screen_needs_but_the_model_still_gets_only_the_section(registry):
+    rec = run(registry, "getProjectDetail", {"project_id": "beacon", "section": "limitations"})
+    card = rec["cards"][0]["data"]
+    assert card["one_line"] == "Beacon is a test project." and card["tech"] == ["TypeScript", "Redis"]
+    assert card["sections"] == ["Overview", "Limitations and Future Work"] and card["section"] in card["sections"]
+    assert "one_line" not in rec["result"] and "tech" not in rec["result"]
+
+
+def test_listing_skills_shows_one_card_with_evidence_while_the_model_sees_names_only(registry):
+    rec = run(registry, "getSkills", {})
+    assert [c["type"] for c in rec["cards"]] == ["skills"]
+    redis = next(s for s in rec["cards"][0]["data"]["skills"] if s["skill"] == "Redis")
+    assert [e["name"] for e in redis["evidence"]] == ["Beacon", "Acme"]
+    assert all("evidence" not in s for s in rec["result"]["skills"])
+
+
+def test_asking_about_one_skill_shows_a_skill_card_and_an_unlisted_one_shows_none(registry):
+    rec = run(registry, "getSkills", {"skill": "redis"})
+    assert [(c["card_id"], c["type"]) for c in rec["cards"]] == [("skill:redis", "skill")]
+    assert rec["cards"][0]["data"] == rec["result"]["skills"][0]
+    assert run(registry, "getSkills", {"skill": "Kubernetes"})["cards"] == []
+
+
 def test_a_skill_is_found_by_name_or_alias_and_an_unlisted_one_is_said_plainly(registry):
     found = run(registry, "getSkills", {"skill": "redis"})["result"]
     assert found["found"] and [e["kind"] for e in found["skills"][0]["evidence"]] == ["project", "experience"]

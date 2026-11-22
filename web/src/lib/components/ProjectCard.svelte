@@ -1,35 +1,51 @@
 <script lang="ts">
   import type { ProjectDetailCard } from '$lib/cards';
+  import { needsCollapse, projectLinks, statusView } from '$lib/cardView';
 
   let { data }: { data: ProjectDetailCard['data'] } = $props();
 
-  // Status words follow the knowledge base: only "shipped" may be called built.
-  const statusLabel: Record<string, string> = {
-    shipped: 'Shipped',
-    runnable_not_deployed: 'Runs locally, not deployed',
-    in_progress: 'In progress',
-    idea: 'Idea',
-  };
+  const status = $derived(statusView(data.status));
+  const links = $derived(projectLinks(data.links));
+  const collapsible = $derived(needsCollapse(data.text));
+  let expanded = $state(false);
 </script>
 
-<div class="panel p-4">
-  <div class="flex items-start justify-between gap-3 mb-2">
-    <p class="text-xs font-medium text-ink font-bold uppercase tracking-wider">{data.name} · {data.section}</p>
-    <span class="shrink-0 rounded-full bg-cream px-2 py-0.5 text-[10px] font-medium text-neutral-600">
-      {statusLabel[data.status] ?? data.status}
-    </span>
+<article class="card">
+  <header class="project-card__top">
+    <div class="project-card__title">
+      <h3 class="project-card__name">{data.name}</h3>
+      <span class="status" data-tone={status.tone}>{status.label}</span>
+    </div>
+    {#if data.one_line}<p class="project-card__one-line">{data.one_line}</p>{/if}
+    <ul class="project-card__sections" aria-label="Sections">
+      {#each data.sections ?? [data.section] as section (section)}
+        <li class="project-card__section" aria-current={section === data.section}>{section}</li>
+      {/each}
+    </ul>
+  </header>
+
+  <div class="project-card__body">
+    <p class="project-card__text" data-collapsed={collapsible && !expanded}>{data.text}</p>
+    {#if collapsible}
+      <button class="project-card__toggle" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
+        {expanded ? 'show less' : 'read more'}
+      </button>
+    {/if}
   </div>
 
-  <p class="text-sm leading-relaxed whitespace-pre-line max-h-64 overflow-y-auto">{data.text}</p>
-
-  {#if data.links.repo || data.links.live}
-    <div class="flex gap-4 mt-3 text-xs">
-      {#if data.links.repo}
-        <a href={data.links.repo} target="_blank" rel="noopener noreferrer" class="text-ink font-bold hover:underline">Repository</a>
-      {/if}
-      {#if data.links.live}
-        <a href={data.links.live} target="_blank" rel="noopener noreferrer" class="text-ink font-bold hover:underline">Live demo</a>
-      {/if}
-    </div>
+  {#if data.tech?.length}
+    <ul class="project-card__tech" aria-label="Tech">
+      {#each data.tech as tech (tech)}<li class="project-card__pill">{tech}</li>{/each}
+    </ul>
   {/if}
-</div>
+
+  <footer class="project-card__links">
+    {#each links as link (link.key)}
+      {#if link.href}
+        <a class="link-button" data-primary={link.key === 'repo'} href={link.href} target="_blank" rel="noopener noreferrer">{link.label} ↗</a>
+      {:else}
+        <span class="link-button" aria-disabled="true">{link.label} ↗</span>
+      {/if}
+    {/each}
+  </footer>
+</article>
