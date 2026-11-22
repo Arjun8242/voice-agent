@@ -14,6 +14,7 @@ dependencies = [
     "pydantic>=2",
     "tzdata",
     "pypdf>=6",  # resume text for interview mode (interview/resume.py)
+    "silero-vad>=6", 
 ]
 
 [project.optional-dependencies]

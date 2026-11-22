@@ -1,0 +1,42 @@
+/* Skills cards (SkillsCard.svelte, SkillCard.svelte), from the viva-cards.html design.
+   Shares .card and .card-slot with cards.css. Class names are prefixed because these rules are global. */
+
+.skills-card__top { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 3px solid var(--color-ink); background: var(--color-lilac); }
+.skills-card__title { margin: 0; font-weight: 800; font-size: 24px; letter-spacing: -.03em; }
+.skills-card__count { border: 2.5px solid var(--color-ink); border-radius: 999px; padding: 3px 10px; font-weight: 800; font-size: 12px; background: #fff; }
+.skills-card__groups { display: grid; gap: 10px; padding: 12px 16px 6px; }
+.skills-card__group-label { margin: 0 0 5px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: .08em; color: #666; }
+.skills-card__chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+
+.skill-chip { border: 2px solid var(--color-ink); border-radius: 10px; padding: 4px 10px; font-weight: 700; font-size: 13px; background: #fff; transition: transform .12s, box-shadow .12s; }
+.skill-chip:hover { transform: translateY(-2px); box-shadow: 2px 3px 0 var(--color-ink); }
+.skill-chip[data-category="language"], .skill-chip[data-category="computer-science"] { background: var(--color-sun); }
+.skill-chip[data-category="frontend"], .skill-chip[data-category="devops"] { background: var(--color-sky); }
+.skill-chip[data-category="backend"] { background: var(--color-leaf); }
+.skill-chip[data-category="database"] { background: var(--color-tangerine); }
+.skill-chip[data-category="tooling"] { background: #e6e6e6; }
+.skill-chip[data-category="ai"] { background: var(--color-lilac); }
+.skill-chip[data-category="integrations"] { background: #fff0cf; }
+.skill-chip[data-category="security"] { background: var(--color-bubblegum); }
+.skill-chip[aria-pressed="true"] { background: var(--color-ink); color: #fff; transform: rotate(-3deg); }
+
+.skills-card__evidence { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 44px; margin: 8px 16px 14px; border: 2.5px dashed var(--color-ink); border-radius: 14px; padding: 10px 12px; background: var(--color-cream); font-weight: 600; font-size: 14px; }
+.skills-card__hint { margin: 0; font-weight: 500; color: #666; }
+
+.evidence-list { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.evidence-item { display: inline-flex; align-items: center; gap: 6px; border: 2px solid var(--color-ink); border-radius: 10px; padding: 3px 9px; background: #fff; font-weight: 700; font-size: 13px; }
+.evidence-item small { font-weight: 600; color: #555; }
+
+/* ---------- single skill ---------- */
+.skill-card__head { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 14px 16px; }
+.skill-card__badge { display: grid; place-items: center; width: 64px; height: 64px; border: 3px solid var(--color-ink); border-radius: 18px; background: var(--color-bubblegum); font-weight: 800; font-size: 26px; transform: rotate(-6deg); box-shadow: 3px 3px 0 var(--color-ink); }
+.skill-card__badge[data-category="language"], .skill-card__badge[data-category="computer-science"] { background: var(--color-sun); }
+.skill-card__badge[data-category="frontend"], .skill-card__badge[data-category="devops"] { background: var(--color-sky); }
+.skill-card__badge[data-category="backend"] { background: var(--color-leaf); }
+.skill-card__badge[data-category="database"] { background: var(--color-tangerine); }
+.skill-card__badge[data-category="tooling"] { background: #e6e6e6; }
+.skill-card__badge[data-category="ai"] { background: var(--color-lilac); }
+.skill-card__badge[data-category="integrations"] { background: #fff0cf; }
+.skill-card__name { margin: 0; font-weight: 800; font-size: 26px; letter-spacing: -.03em; line-height: 1; }
+.skill-card__category { display: inline-block; margin-top: 6px; border: 2px solid var(--color-ink); border-radius: 8px; padding: 2px 7px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.skill-card__used { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; padding: 10px 16px 14px; border-top: 2.5px dashed var(--color-ink); font-weight: 700; font-size: 13px; }

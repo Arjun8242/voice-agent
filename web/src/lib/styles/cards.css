@@ -1,0 +1,47 @@
+/* Transcript cards (ProjectCard.svelte, LinkCard.svelte), from docs design viva-cards.html.
+   Colours come from the @theme tokens in app.css. Class names are prefixed because these rules are global. */
+
+.card-slot { margin-left: 44px; max-width: calc(100% - 44px); animation: card-drop .55s cubic-bezier(.3,1.6,.5,1); }
+@keyframes card-drop { from { opacity: 0; transform: translateY(-8px) rotate(-2deg) scale(.95); } }
+
+.card { background: #fff; border: 3px solid var(--color-ink); border-radius: 22px; box-shadow: 6px 6px 0 var(--color-ink); overflow: hidden; }
+
+/* ---------- project card ---------- */
+.project-card__top { background: var(--color-sun); border-bottom: 3px solid var(--color-ink); padding: 14px 16px 12px; }
+.project-card__title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.project-card__name { margin: 0; font-weight: 800; font-size: 30px; letter-spacing: -.04em; line-height: 1; }
+.project-card__one-line { margin: 8px 0 0; font-weight: 500; font-size: 14px; line-height: 1.4; color: #2a2a2a; }
+
+.status { display: inline-flex; align-items: center; border: 2.5px solid var(--color-ink); border-radius: 999px; padding: 3px 10px; font-weight: 800; font-size: 12px; background: var(--color-leaf); }
+.status[data-tone="local"] { background: var(--color-sky); }
+.status[data-tone="wip"] { background: var(--color-tangerine); }
+
+.project-card__sections { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.project-card__section { border: 2px solid var(--color-ink); border-radius: 10px; padding: 3px 9px; font-weight: 700; font-size: 12px; background: #fff; }
+.project-card__section[aria-current="true"] { background: var(--color-ink); color: #fff; }
+
+.project-card__body { padding: 14px 16px 4px; }
+.project-card__text { position: relative; margin: 0; font-size: 14.5px; line-height: 1.5; white-space: pre-line; }
+.project-card__text[data-collapsed="true"] { max-height: 7.5em; overflow: hidden; }
+.project-card__text[data-collapsed="true"]::after { content: ""; position: absolute; inset: auto 0 0 0; height: 2.4em; background: linear-gradient(transparent, #fff); }
+.project-card__text[data-collapsed="false"] { max-height: 40em; overflow-y: auto; }
+.project-card__toggle { border: 0; background: none; padding: 6px 0; font-weight: 800; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
+
+.project-card__tech { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 6px 16px 14px; list-style: none; }
+.project-card__pill { border: 2px solid var(--color-ink); border-radius: 999px; padding: 2px 9px; font-weight: 700; font-size: 12px; background: var(--color-cream); }
+
+.project-card__links { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 16px 14px; border-top: 2.5px dashed var(--color-ink); }
+.link-button { display: inline-flex; align-items: center; gap: 6px; border: 2.5px solid var(--color-ink); border-radius: 12px; padding: 8px 14px; font-weight: 800; font-size: 14px; background: #fff; box-shadow: 3px 3px 0 var(--color-ink); text-decoration: none; transition: transform .1s, box-shadow .1s; }
+a.link-button:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--color-ink); }
+.link-button[data-primary="true"] { background: var(--color-sun); }
+.link-button[aria-disabled="true"] { opacity: .35; box-shadow: none; }
+
+/* ---------- link card ---------- */
+.link-card { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 14px 16px; color: inherit; text-decoration: none; transition: background .15s; }
+.link-card:hover { background: var(--color-cream); }
+.link-card__icon { display: grid; place-items: center; width: 54px; height: 54px; border: 3px solid var(--color-ink); border-radius: 16px; background: var(--color-leaf); font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+.link-card__label { margin: 0; font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+.link-card__description { margin: 2px 0 0; font-size: 13.5px; font-weight: 500; line-height: 1.35; color: #444; }
+.link-card__host { margin: 4px 0 0; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11.5px; color: #666; overflow-wrap: anywhere; }
+.link-card__go { display: grid; place-items: center; width: 44px; height: 44px; border: 3px solid var(--color-ink); border-radius: 50%; background: var(--color-sun); font-weight: 800; font-size: 20px; box-shadow: 3px 3px 0 var(--color-ink); transition: transform .15s; }
+.link-card:hover .link-card__go { transform: rotate(-20deg); }

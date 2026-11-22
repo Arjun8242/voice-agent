@@ -1,0 +1,65 @@
+/* Booking cards (components/booking/*.svelte), from the viva-booking.html design.
+   Shares .card and .card-slot with cards.css. Class names are prefixed because these rules are global. */
+
+.booking-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 3px solid var(--color-ink); background: var(--color-sky); }
+.booking-header__icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border: 2.5px solid var(--color-ink); border-radius: 10px; background: var(--color-leaf); }
+.booking-header__title { margin: 0; font-weight: 800; font-size: 20px; letter-spacing: -.02em; }
+.booking-header__tags { display: flex; gap: 6px; margin: 0 0 0 auto; padding: 0; list-style: none; }
+.booking-header__tag { border: 2px solid var(--color-ink); border-radius: 999px; padding: 2px 9px; font-weight: 700; font-size: 12px; background: #fff; white-space: nowrap; }
+
+.booking-body { padding: 14px 16px 16px; }
+.booking-note { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: #555; }
+.booking-note--after { margin: 10px 0 0; }
+
+.action-button { border: 2.5px solid var(--color-ink); border-radius: 12px; padding: 9px 16px; font-weight: 800; font-size: 15px; background: #fff; box-shadow: 3px 3px 0 var(--color-ink); transition: transform .1s, box-shadow .1s; }
+.action-button:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--color-ink); }
+.action-button[data-tone="go"] { background: var(--color-sun); }
+.action-button[data-tone="danger"] { background: var(--color-bubblegum); }
+.action-button:disabled { opacity: .4; }
+.action-buttons { display: flex; gap: 10px; margin-top: 6px; }
+
+/* ---------- slots ---------- */
+.slot-days { display: grid; gap: 12px; }
+.slot-day__label { margin: 0 0 6px; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #555; }
+.slot-day__times { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.slot-button { border: 2.5px solid var(--color-ink); border-radius: 12px; padding: 8px 14px; font-weight: 800; font-size: 15px; background: var(--color-cream); box-shadow: 3px 3px 0 var(--color-ink); transition: transform .1s, box-shadow .1s, background .15s; }
+.slot-button:hover:not(:disabled) { background: var(--color-sun); transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--color-ink); }
+.slot-button:disabled { opacity: .35; }
+.slot-button[aria-pressed="true"] { background: var(--color-ink); color: #fff; opacity: 1; transform: rotate(-3deg); }
+
+/* ---------- details form ---------- */
+.booking-chosen { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; border: 2.5px dashed var(--color-ink); border-radius: 14px; padding: 10px 12px; background: var(--color-cream); font-weight: 800; }
+.booking-chosen small { font-weight: 600; color: #555; }
+.booking-field { display: grid; gap: 5px; margin-bottom: 10px; }
+.booking-field > span { font-weight: 700; font-size: 13px; }
+.booking-field > input { border: 2.5px solid var(--color-ink); border-radius: 12px; padding: 10px 12px; font: 600 15px var(--font-display); background: #fff; transition: box-shadow .15s; }
+.booking-field > input:focus { box-shadow: 3px 3px 0 var(--color-lilac); }
+
+/* ---------- summary ---------- */
+.booking-summary { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0 0 14px; font-size: 15px; }
+.booking-summary dt { font-weight: 700; color: #555; }
+.booking-summary dd { margin: 0; font-weight: 700; word-break: break-all; }
+
+/* ---------- confirmed ticket ---------- */
+.booking-ticket { display: grid; }
+.booking-ticket[data-dated="true"] { grid-template-columns: 110px 1fr; }
+.booking-ticket__date { position: relative; display: grid; place-content: center; padding: 16px 8px; border-right: 3px dashed var(--color-ink); background: var(--color-sun); text-align: center; }
+.booking-ticket__date::before, .booking-ticket__date::after { content: ""; position: absolute; right: -14px; width: 24px; height: 24px; border: 3px solid var(--color-ink); border-radius: 50%; background: var(--color-cream); }
+.booking-ticket__date::before { top: -15px; }
+.booking-ticket__date::after { bottom: -15px; }
+.booking-ticket__month { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; letter-spacing: .1em; }
+.booking-ticket__day { font-weight: 800; font-size: 46px; line-height: .9; letter-spacing: -.04em; }
+.booking-ticket__weekday { font-weight: 800; font-size: 14px; }
+.booking-ticket__main { padding: 14px 16px 14px 22px; }
+.booking-ticket__badge { display: inline-flex; align-items: center; border: 2.5px solid var(--color-ink); border-radius: 999px; padding: 3px 10px; font-weight: 800; font-size: 12px; background: var(--color-leaf); transform: rotate(-2deg); }
+.booking-ticket__title { margin: 8px 0 2px; font-weight: 800; font-size: 22px; letter-spacing: -.03em; overflow-wrap: anywhere; }
+.booking-ticket__when { margin: 0; font-weight: 700; font-size: 15px; }
+.booking-ticket__invite { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: #555; overflow-wrap: anywhere; }
+
+/* ---------- outcome and cancel confirmation ---------- */
+.booking-notice { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+.booking-notice__icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border: 2.5px solid var(--color-ink); border-radius: 12px; font-weight: 800; font-size: 20px; background: var(--color-bubblegum); }
+.booking-notice__icon[data-tone="good"] { background: var(--color-leaf); }
+.booking-notice__icon[data-tone="warn"] { background: var(--color-tangerine); }
+.booking-notice__title { margin: 0 0 3px; font-weight: 800; font-size: 17px; }
+.booking-notice__text { margin: 0; font-size: 14.5px; font-weight: 500; line-height: 1.45; }

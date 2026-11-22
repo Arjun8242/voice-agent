@@ -1,5 +1,5 @@
 """Interview mode over the WebSocket (C1): start_interview switches the connection to the interview graph,
-its hold times, its STT silence and the persona's voice. Fake WebSocket, STT, TTS and models, as in
+its hold times, its VAD silence and the persona's voice. Fake WebSocket, STT, TTS and models, as in
 test_voice_conversation.py, whose harness this reuses."""
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import sys
 from backend.graph.interview.graph import build_interview_graph
 from backend.interview.personas import OPENING, STRICT
 from backend.interview.plan import make_topic
-from backend.providers.stt import stt_url
 from backend.tests.helpers import ScriptedModel
 from backend.tests.voice import test_voice_conversation
 from backend.tests.voice.test_voice_conversation import (  # noqa: F401 (fake_tts is an autouse fixture)
@@ -119,13 +118,13 @@ def test_answers_go_to_the_interview_graph_after_the_longer_interview_hold():
     assert "Candidate's latest message: It schedules checks." in model.calls[0]["prompt"]
 
 
-def test_start_interview_sets_the_interview_stt_silence():
+def test_start_interview_sets_the_interview_vad_silence():
     graph, _ = interviewer()
 
     async def scenario(h):
         start(h)
         await h.answered(1)
-        assert h.stt_holder[0].url == stt_url("interview")
+        assert h.stt_holder[0].mode == "interview"
     run(scenario, GatedModel(), interview_graph=graph)
 
 

@@ -16,7 +16,6 @@ from backend.interview.personas import NEUTRAL, Persona, get_persona
 from backend.interview.plan import live_stage
 from backend.observability.timings import append_turn_log
 from backend.pipeline.turn_taking import INTERVIEW_POLICY, TurnTaker
-from backend.providers.stt import stt_url
 
 try:
     from pipeline.barge_in import BargeIn
@@ -271,7 +270,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     # Interview mode
     # -------------------------------------------------------------------------
     def start_interview(requested_persona: object) -> None:
-        """Switch to the interview graph, its hold times and STT silence, then ask the opening question.
+        """Switch to the interview graph, its hold times and VAD silence, then ask the opening question.
 
         Sent by a click in the page, so the browser lets the interviewer's audio play. A repeat is ignored.
         """
@@ -281,8 +280,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
         interviewing = True
         persona = get_persona(requested_persona if isinstance(requested_persona, str) else None)
         turn_taker.policy = INTERVIEW_POLICY
-        # shortcut: the STT socket reads its URL when it opens, so speech before Start keeps 500 ms; the page starts the mic after Start
-        stt.url = stt_url("interview")
+        stt.mode = "interview"  # Silero waits longer in silence before it ends the candidate's speech
         turn_taker.drop_pending()
         if is_answering(conv):
             do_interrupt()

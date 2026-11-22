@@ -28,12 +28,18 @@ SARVAM_STT_URL = (
     "?language_code=en-IN"
     "&model=saaras:v3-realtime"
     "&stream_type=fast"
+    "&endpointing=manual"  # Sarvam's VAD is off: Silero (pipeline/vad.py) sends speech_start and speech_end
 )
 STT_QUEUE_MAX = 50
-# How long Sarvam waits in silence before it ends a speech segment. Recruiter mode keeps the provider
-# default (500 ms) by not sending the parameter; an interview candidate pauses to think, so fewer, longer
-# segments. A starting guess from the plan (900-1200), not yet measured with stream_type=fast.
-STT_INTERVIEW_SILENCE_MS = 1000
+# Sarvam closes a socket after 60 s with no audio; so ping before that.
+STT_KEEPALIVE_S = 20
+VAD_THRESHOLD = float(os.environ.get("VAD_THRESHOLD", "0.5"))
+VAD_MIN_SPEECH_MS = 250  # shorter voiced bursts (clicks, bangs) never start speech
+VAD_PREROLL_MS = 300  # audio before the start that is sent too, so the first word is not cut off
+# Silence that ends speech. An interview candidate pauses to think, so fewer, longer segments.
+# Starting guesses from the plan (Sarvam's old default was 500), not yet measured with Silero.
+VAD_SILENCE_MS = 500
+VAD_INTERVIEW_SILENCE_MS = 1000
 # An interview ends after this long, at the next candidate answer. Caps paid STT minutes and TTS (v2 design, "LLM and Sarvam usage").
 INTERVIEW_MAX_SECONDS = 900
 # Time one question and its answer take, for keeping time for later stages' minimum questions.

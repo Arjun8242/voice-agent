@@ -1,6 +1,8 @@
 """stt.py: Real-time speech-to-text client backed by Sarvam AI WebSocket.
 
-Corresponds to src/providers/stt.ts.
+Sarvam's VAD is off (endpointing=manual): Silero (pipeline/vad.py) decides where speech starts and
+ends. Only speech is sent, between speech_start and speech_end messages, and Sarvam sends the final
+transcript after speech_end. The speech handlers are called from here, not from Sarvam's events.
 """
 
 import asyncio
@@ -11,27 +13,28 @@ from typing import Protocol
 
 import websockets
 
+from backend.pipeline.vad import SileroVad, SpeechGate
+
 try:
     from config import (
         SARVAM_API_KEY,
         SARVAM_STT_URL,
-        STT_INTERVIEW_SILENCE_MS,
+        STT_KEEPALIVE_S,
         STT_QUEUE_MAX,
+        VAD_INTERVIEW_SILENCE_MS,
+        VAD_SILENCE_MS,
     )
 except (ImportError, ModuleNotFoundError):
     from backend.config import (
         SARVAM_API_KEY,
         SARVAM_STT_URL,
-        STT_INTERVIEW_SILENCE_MS,
+        STT_KEEPALIVE_S,
         STT_QUEUE_MAX,
+        VAD_INTERVIEW_SILENCE_MS,
+        VAD_SILENCE_MS,
     )
 
-
-def stt_url(mode: str) -> str:
-    """The Sarvam realtime URL for a conversation mode: interview mode asks for a longer end-of-speech silence."""
-    if mode == "interview":
-        return f"{SARVAM_STT_URL}&silence_duration_ms={STT_INTERVIEW_SILENCE_MS}"
-    return SARVAM_STT_URL
+MAX_AUDIO_BYTES = 8000  # 250 ms per message; Sarvam rejects more than 500 ms (16000 bytes) on stream_type=fast
 
 
 class SttHandlers(Protocol):
@@ -46,29 +49,54 @@ class SttHandlers(Protocol):
 class SttClient:
     """Lazy-open STT WebSocket client. send_audio() is sync; close() is sync.
 
-    url is read when the socket opens (on the first audio), so the connection can still set it
-    after it learns the mode from the browser's session_start.
+    The socket opens with the first audio, so it is ready when speech starts. mode ("interview" or
+    anything else) sets how much silence ends speech; the connection sets it when the interview starts.
     """
 
-    def __init__(self, handlers: SttHandlers, url: str = SARVAM_STT_URL) -> None:
+    def __init__(self, handlers: SttHandlers) -> None:
         self._handlers = handlers
-        self.url = url
         self._queue: Queue[str] = Queue(maxsize=STT_QUEUE_MAX)
         self._task: asyncio.Task | None = None
+        self._gate = SpeechGate()
+        self._vad: SileroVad | None = None  # the model loads with the first audio
+        self._mode = "recruiter"
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    @mode.setter
+    def mode(self, mode: str) -> None:
+        self._mode = mode
+        self._gate.silence_ms = VAD_INTERVIEW_SILENCE_MS if mode == "interview" else VAD_SILENCE_MS
 
     def send_audio(self, pcm: bytes) -> None:
-        """Encode PCM to base64, enqueue the JSON frame. Lazy-opens the connection."""
-        msg = json.dumps({
-            "event": "audio_input",
-            "audio": base64.b64encode(pcm).decode(),
-        })
-        if self._task is None or self._task.done():
-            self._task = asyncio.get_running_loop().create_task(self._run())
+        """Run Silero on the audio; send Sarvam only speech, wrapped in speech_start and speech_end."""
+        if self._vad is None:
+            self._vad = SileroVad(self._gate)
+        self._open()
+        for event in self._vad.feed(pcm):
+            if event.kind == "start":
+                self._handlers.on_speech_start()
+                self._send({"event": "speech_start"})
+            for i in range(0, len(event.audio), MAX_AUDIO_BYTES):
+                chunk = event.audio[i:i + MAX_AUDIO_BYTES]
+                self._send({"event": "audio_input", "audio": base64.b64encode(chunk).decode()})
+            if event.kind == "end":
+                self._send({"event": "speech_end"})
+                self._handlers.on_speech_end()
 
+    def _send(self, message: dict) -> None:
+        """Queue a message for Sarvam (send_audio has opened the socket)."""
         try:
-            self._queue.put_nowait(msg)
+            self._queue.put_nowait(json.dumps(message))
         except QueueFull:
             pass
+
+    def _open(self) -> None:
+        """Start the socket task if none is running (the first audio, or after Sarvam closed it)."""
+        if self._task is None or self._task.done():
+            self._task = asyncio.get_running_loop().create_task(self._run())
 
     def close(self) -> None:
         """Cancel the background task (closes the WebSocket via task cancellation)."""
@@ -79,7 +107,7 @@ class SttClient:
     async def _run(self) -> None:
         try:
             async with websockets.connect(
-                self.url,
+                SARVAM_STT_URL,
                 additional_headers={"api-subscription-key": SARVAM_API_KEY},
                 ping_interval=5,
             ) as ws, asyncio.TaskGroup() as tg:
@@ -91,9 +119,12 @@ class SttClient:
             await self._handlers.on_error(str(e))
 
     async def _sender(self, ws) -> None:
-        """Drain the queue and forward frames to the WebSocket."""
+        """Drain the queue and forward frames to the WebSocket; ping when idle so Sarvam keeps the socket."""
         while True:
-            msg = await self._queue.get()
+            try:
+                msg = await asyncio.wait_for(self._queue.get(), STT_KEEPALIVE_S)
+            except TimeoutError:
+                msg = json.dumps({"event": "ping"})
             await ws.send(msg)
 
     async def _reader(self, ws) -> None:
@@ -106,13 +137,7 @@ class SttClient:
 
             event = ev.get("event", "")
 
-            if event == "vad.speech_start":
-                self._handlers.on_speech_start()
-
-            elif event == "vad.speech_end":
-                self._handlers.on_speech_end()
-
-            elif event in ("transcript.partial", "transcript.final"):
+            if event in ("transcript.partial", "transcript.final"):
                 text = str(ev.get("text") or "").strip()
                 if not text:
                     continue

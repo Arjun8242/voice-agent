@@ -400,7 +400,7 @@ def test_16_short_okay_while_the_answer_plays_is_not_a_new_turn():
         await h.answered(1)  # the server is done; the browser is still playing the answer
         h.handlers.on_speech_start()
         await h.handlers.on_partial("Okay")
-        await asyncio.sleep(0.5)  # a spoken "okay" plus Sarvam's end-of-speech silence lasts this long (live test 2.2)
+        await asyncio.sleep(0.5)
         h.handlers.on_speech_end()
         await h.say("okay")
         await asyncio.sleep(0.1)

@@ -1,4 +1,7 @@
 @import "tailwindcss";
+@import "./lib/styles/cards.css";
+@import "./lib/styles/booking.css";
+@import "./lib/styles/skills.css";
 
 /* The viva! look (docs/viva-landing.html, docs/viva-design-blobs.html): cream paper with a dot grid,
    thick ink outlines, hard offset shadows and a few bright fills. Components use these tokens and classes. */

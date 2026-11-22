@@ -59,7 +59,9 @@ def get_project_detail(args: GetProjectDetailArgs, kb: KbData) -> tuple[dict, li
     card = {
         "card_id": f"project_detail:{project.id}:{heading}",
         "type": "project_detail",
+        # one_line, tech and sections are for the card only; the model gets the section text above
         "data": {"project_id": project.id, "name": project.name, "status": project.status,
-                 "section": heading, "text": sections[heading], "links": links},
+                 "section": heading, "text": sections[heading], "links": links,
+                 "one_line": project.one_line, "tech": project.tech, "sections": list(sections)},
     }
     return result, [card]
