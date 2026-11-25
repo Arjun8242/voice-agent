@@ -54,7 +54,11 @@ async def speak_sentence(
 ) -> None:
     """TTS one sentence in the given voice ("" = the default). Always fires tts_end in finally.
     A fixed interviewer line plays from its recording when there is one (pipeline/fixed_audio.py)."""
+
+    # adds sentenceId to the front of every MP3 chunk, so the browser can tell which sentence it belongs to who 
+    # Binary frame: 4-byte sentence-ID prefix + MP3 chunk
     id_buf = struct.pack("<I", sentence_id)
+
     produced_first = False
     heard: list[bytes] = []
 
