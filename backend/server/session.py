@@ -1,6 +1,4 @@
 """session.py: Conversation state and turn lifecycle helpers.
-
-Corresponds to src/server/session.ts.
 """
 import asyncio
 
@@ -14,8 +12,8 @@ class Conversation:
         self.agent_speaking: bool = False  # audio was sent and the browser has not said it finished playing
         self.speech_ended_at: float | None = None
         self.current: asyncio.Task | None = None
-        # Barge-in bookkeeping: what the visitor really heard of a cut-off answer.
-        self.sentences: list[tuple[int, str]] = []  # (sentence id, text) queued for speech this turn
+        # Stores the currently running assistant-turn task.
+        self.sentences: list[tuple[int, str]] = []  # (sentence id, text) Stores sentences queued or spoken during the current turn
         self.cut_off_sentences: list[tuple[int, str]] = []  # copy of the above, taken at the interrupt
         self.waiting_for_report: int | None = None  # turn id whose playback report has not arrived
         self.report_arrived = asyncio.Event()
@@ -71,8 +69,7 @@ def heard_reply(sentences: list[tuple[int, str]], last_heard_id) -> str:
 def cut_off(c: Conversation, turn_id: int) -> None:
     """Barge-in: remember what the turn had queued, then wait for the client to say how much was heard."""
     if not c.sentences:
-        # Nothing of this turn was spoken (e.g. it was still waiting for an earlier report).
-        # Keep any earlier cut-off's pending report instead of wiping it.
+        # agent hasn't started speaking yet, so nothing to report. This can happen if the visitor interrupts before the first sentence is sent.
         return
     c.waiting_for_report = turn_id
     c.cut_off_sentences = list(c.sentences)

@@ -1,5 +1,3 @@
-"""connection.py: Per-connection handler — wires barge-in, STT, and answer turns.
-"""
 import asyncio
 import json
 import re
@@ -7,7 +5,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError   #zoneinfo provide concrete time zone support using the IANA Time Zone Database
 
 import httpx
 from fastapi import WebSocket, WebSocketDisconnect
@@ -21,7 +19,7 @@ try:
     from pipeline.barge_in import BargeIn
     from pipeline.voice_turn import voice_turn
     from providers.stt import create_stt
-    from server.protocol import create_send, with_turn_id
+    from server.protocol import create_send
     from server.session import (
         Conversation,
         cut_off,
@@ -39,7 +37,7 @@ except (ImportError, ModuleNotFoundError):
     from backend.pipeline.barge_in import BargeIn
     from backend.pipeline.voice_turn import voice_turn
     from backend.providers.stt import create_stt
-    from backend.server.protocol import create_send, with_turn_id
+    from backend.server.protocol import create_send
     from backend.server.session import (
         Conversation,
         cut_off,
@@ -53,7 +51,7 @@ except (ImportError, ModuleNotFoundError):
     )
 
 DEFAULT_TIMEZONE = "Asia/Kolkata"
-END_REQUEST = "Let's end the interview."  # what the End button means; interview/intents.py reads it as "end"
+END_REQUEST = "Let's end the interview."
 SESSION_ID_RE = re.compile(r"[0-9a-f]{32}")
 
 def valid_timezone(name: object) -> str:
@@ -101,9 +99,6 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
     plans = interview_plans if interview_plans is not None else {}
     idle = idle_since if idle_since is not None else {}
     listening = True  # False once an interview has finished: the STT socket is closed and stays closed
-
-    # A new event is created for each turn so a stale event from a cancelled turn
-    # cannot abort a newer one.
     interrupt_event: asyncio.Event = asyncio.Event()
 
     # -------------------------------------------------------------------------
@@ -162,7 +157,7 @@ async def handle_connection(ws: WebSocket, tts_client: httpx.AsyncClient, graph:
                        "turn_decision": turn_taker.last_decision, "segments_merged": turn_taker.last_segments}
         turn_timings = timings
 
-        task = asyncio.create_task(_run_turn(text, conv, with_turn_id(send, turn_id), interrupt_event, timings, ui_action, nudge))
+        task = asyncio.create_task(_run_turn(text, conv, create_send(ws, turn_id), interrupt_event, timings, ui_action, nudge))
         start_turn(conv, task)
 
     async def _run_turn(
